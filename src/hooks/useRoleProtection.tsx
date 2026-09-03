@@ -42,6 +42,3 @@ export function useRoleProtection(protectedRoute: 'products' | 'cart' | 'checkou
     checkAccess();
   }, [navigate, protectedRoute]);
 }
-
-
-
