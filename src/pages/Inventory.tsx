@@ -3,8 +3,9 @@ import Navbar from "../components/layout/Navbar";
 import { useState, useRef, useEffect } from "react";
 import ProductCard from "../components/product/ProductCard";
 import { useNavigate } from "react-router-dom";
-import { searchProducts, addStockToProduct, createProduct, uploadImage, deleteProduct, updateProduct, type Product as ProductType } from "../api/products";
+import { searchProducts, addStockToProduct, createProduct, uploadImage, deleteProduct, updateProduct, syncProductsFromApi, type Product as ProductType } from "../api/products";
 import { API_BASE_URL } from "../config/api";
+
 
 type Product = ProductType & {
     expectedArrival?: string | null;
@@ -43,6 +44,8 @@ export function Inventory() {
     const [newDesc, setNewDesc] = useState("");
     const [newStock, setNewStock] = useState("");
     const [newCategory, setNewCategory] = useState("");
+    const [syncingApi, setSyncingApi] = useState(false);
+
     // preview URL for uploaded image
     const [preview, setPreview] = useState<string | null>(null);
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -211,7 +214,27 @@ export function Inventory() {
         }
     };
 
+    const handleSyncFromApi = async () => {
+        try {
+            setSyncingApi(true);
+            setError(null);
+            const result = await syncProductsFromApi();
+            setSuccessMessage(`${result.message}. (${result.nuevos_productos} productos añadidos)`);
+            await loadProducts();
+            setTimeout(() => setSuccessMessage(null), 4000);
+        } catch (err: unknown) {
+            if (err instanceof Error) {
+                setError(err.message);
+            } else {
+                setError("Error al sincronizar con la API");
+            }
+        } finally {
+            setSyncingApi(false);
+        }
+    };
+
     const handleClearForm = () => {
+
         setNewName("");
         setNewPrice("");
         setNewDesc("");
@@ -353,17 +376,29 @@ export function Inventory() {
                     </div>
 
                     {/* Tabs */}
-                    <div className="flex gap-2 mb-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+                        <div className="flex gap-2">
+                            <button
+                                onClick={() => setActiveTab("search")}
+                                className={px-3 py-1 rounded-md text-sm cursor-pointer }>
+                                Búsqueda de artículos
+                            </button>
+                            <button
+                                onClick={() => setActiveTab("add")}
+                                className={px-3 py-1 rounded-md text-sm cursor-pointer }>
+                                Añadir stock / Producto
+                            </button>
+                        </div>
                         <button
-                            onClick={() => setActiveTab("search")}
-                            className={`px-3 py-1 rounded-md text-sm cursor-pointer ${activeTab === "search" ? "bg-[var(--Primary_3)] text-white" : "bg-transparent border border-[var(--Primary_3)] text-[var(--Primary_3)] "}`}>
-                            Búsqueda de artículos
+                            onClick={handleSyncFromApi}
+                            disabled={syncingApi}
+                            className="flex items-center gap-2 px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-sm font-medium transition-colors shadow-sm disabled:opacity-50 cursor-pointer">
+                            <svg className={w-4 h-4 } fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                            </svg>
+                            {syncingApi ? "Sincronizando..." : "Sincronizar Repuestos (API)"}
                         </button>
-                        <button
-                            onClick={() => setActiveTab("add")}
-                            className={`px-3 py-1 rounded-md text-sm cursor-pointer ${activeTab === "add" ? "bg-[var(--Primary_3)] text-white" : "bg-transparent border border-gray-200 text-gray-700"}`}>
-                            Añadir stock / Producto
-                        </button>
+                    </div>
                     </div>
 
                     {/* Mensajes de éxito/error */}

@@ -247,3 +247,22 @@ export async function createProduct(productData: {
     asNetworkError(error);
   }
 }
+
+export async function syncProductsFromApi(): Promise<{ message: string; nuevos_productos: number; total_productos: number }> {
+  try {
+    const res = await fetch(`${API_BASE}/products/sync-api`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || body.message || "Error al sincronizar catálogo con la API");
+    }
+
+    return await res.json();
+  } catch (error) {
+    asNetworkError(error);
+  }
+}
+
