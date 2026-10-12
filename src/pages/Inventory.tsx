@@ -1,4 +1,4 @@
-import React from "react";
+﻿import React from "react";
 import Navbar from "../components/layout/Navbar";
 import { useState, useRef, useEffect } from "react";
 import ProductCard from "../components/product/ProductCard";
@@ -380,12 +380,12 @@ export function Inventory() {
                         <div className="flex gap-2">
                             <button
                                 onClick={() => setActiveTab("search")}
-                                className={px-3 py-1 rounded-md text-sm cursor-pointer }>
+                                className={`px-3 py-1 rounded-md text-sm cursor-pointer ${activeTab === "search" ? "bg-[var(--Primary_3)] text-white" : "bg-transparent border border-[var(--Primary_3)] text-[var(--Primary_3)] "}`}>
                                 Búsqueda de artículos
                             </button>
                             <button
                                 onClick={() => setActiveTab("add")}
-                                className={px-3 py-1 rounded-md text-sm cursor-pointer }>
+                                className={`px-3 py-1 rounded-md text-sm cursor-pointer ${activeTab === "add" ? "bg-[var(--Primary_3)] text-white" : "bg-transparent border border-gray-200 text-gray-700"}`}>
                                 Añadir stock / Producto
                             </button>
                         </div>
@@ -393,12 +393,11 @@ export function Inventory() {
                             onClick={handleSyncFromApi}
                             disabled={syncingApi}
                             className="flex items-center gap-2 px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-sm font-medium transition-colors shadow-sm disabled:opacity-50 cursor-pointer">
-                            <svg className={w-4 h-4 } fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className={`w-4 h-4 ${syncingApi ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                             </svg>
                             {syncingApi ? "Sincronizando..." : "Sincronizar Repuestos (API)"}
                         </button>
-                    </div>
                     </div>
 
                     {/* Mensajes de éxito/error */}
