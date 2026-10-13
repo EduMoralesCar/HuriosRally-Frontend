@@ -32,13 +32,14 @@ export const ShopCard: React.FC<{ product: Product }> = ({ product }) => {
   const [showDetails, setShowDetails] = useState<boolean>(false);
   const [imgError, setImgError] = useState<boolean>(false);
 
-  const imageUrl = product.imageUrl 
+  const rawUrl = product.imageUrl || (product as any).image_url;
+  const imageUrl = rawUrl 
     ? (
-        product.imageUrl.startsWith('http') ||
-        product.imageUrl.startsWith('/assets') ||
-        product.imageUrl.startsWith('blob:')
-          ? product.imageUrl
-          : `${API_BASE}${product.imageUrl}`
+        rawUrl.startsWith('http') ||
+        rawUrl.startsWith('/assets') ||
+        rawUrl.startsWith('blob:')
+          ? rawUrl
+          : `${API_BASE}${rawUrl}`
       )
     : "/assets/imgs/placeholder.svg";
 

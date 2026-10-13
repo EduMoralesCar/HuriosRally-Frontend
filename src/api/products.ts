@@ -44,7 +44,11 @@ export async function getAllProducts(category?: string): Promise<Product[]> {
       throw new Error(body.error || body.message || "Error al obtener productos");
     }
 
-    return await res.json();
+    const items = await res.json();
+    return Array.isArray(items) ? items.map((p: any) => ({
+      ...p,
+      imageUrl: p.imageUrl || p.image_url,
+    })) : [];
   } catch (error) {
     asNetworkError(error);
   }
@@ -66,7 +70,11 @@ export async function searchProducts(query: string): Promise<Product[]> {
       throw new Error(body.error || body.message || "Error al buscar productos");
     }
 
-    return await res.json();
+    const items = await res.json();
+    return Array.isArray(items) ? items.map((p: any) => ({
+      ...p,
+      imageUrl: p.imageUrl || p.image_url,
+    })) : [];
   } catch (error) {
     asNetworkError(error);
   }

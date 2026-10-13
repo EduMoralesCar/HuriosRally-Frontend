@@ -19,13 +19,14 @@ const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
   const API_BASE = API_BASE_URL;
   const [imgError, setImgError] = React.useState(false);
   
-  const imageUrl = product.imageUrl 
+  const rawUrl = product.imageUrl || (product as any).image_url;
+  const imageUrl = rawUrl 
     ? (
-        product.imageUrl.startsWith('http') ||
-        product.imageUrl.startsWith('/assets') ||
-        product.imageUrl.startsWith('blob:')
-          ? product.imageUrl
-          : `${API_BASE}${product.imageUrl}`
+        rawUrl.startsWith('http') ||
+        rawUrl.startsWith('/assets') ||
+        rawUrl.startsWith('blob:')
+          ? rawUrl
+          : `${API_BASE}${rawUrl}`
       )
     : "/assets/imgs/placeholder.svg";
 
