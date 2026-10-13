@@ -1,6 +1,7 @@
 ﻿import { useState, useEffect } from 'react';
 import AppRoutes from "./routes/AppRoutes";
 import { LoadingScreen } from './components/ui/LoadingScreen';
+import WhatsAppButton from './components/whatsapp/WhatsAppButton';
 
 function App() {
   const [showLoading, setShowLoading] = useState(true);
@@ -28,8 +29,11 @@ function App() {
         <LoadingScreen onLoadingComplete={handleLoadingComplete} />
       )}
       <AppRoutes />
+
+      {/* Botón flotante de WhatsApp — visible en toda la web */}
+      {!showLoading && <WhatsAppButton />}
     </>
   );
 }
-export default App;
 
+export default App;
