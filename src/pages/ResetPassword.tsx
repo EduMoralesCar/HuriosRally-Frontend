@@ -28,6 +28,7 @@ export const ResetPassword: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [demoCode, setDemoCode] = useState<string | null>(null);
 
   const isEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
@@ -39,7 +40,10 @@ export const ResetPassword: React.FC = () => {
     setSuccessMsg(null);
 
     try {
-      await requestPasswordReset(email);
+      const data = await requestPasswordReset(email);
+      if (data?.code) {
+        setDemoCode(data.code);
+      }
       setSuccessMsg(`Código enviado al correo ${email}. Revisa tu bandeja de entrada o spam.`);
       setStep("CODE");
     } catch (err: any) {
@@ -76,8 +80,11 @@ export const ResetPassword: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
-      await requestPasswordReset(email);
-      setSuccessMsg("Se ha reenviado un nuevo código a tu correo.");
+      const data = await requestPasswordReset(email);
+      if (data?.code) {
+        setDemoCode(data.code);
+      }
+      setSuccessMsg("Se ha generado y reenviado un nuevo código a tu correo.");
     } catch (err: any) {
       setError(err.message || "Error al reenviar el código.");
     } finally {
@@ -222,6 +229,23 @@ export const ResetPassword: React.FC = () => {
                     Revisa tu correo personal. Te enviamos un código de 6 dígitos a <b>{email}</b>.
                   </p>
                 </div>
+
+                {/* Código de ayuda para la prueba/demostración */}
+                {demoCode && (
+                  <div className="mb-6 p-3.5 bg-blue-50 border border-blue-200 rounded-xl text-center text-xs text-blue-900 flex items-center justify-between shadow-sm">
+                    <div>
+                      <span className="text-gray-600">Código de verificación: </span>
+                      <strong className="font-mono text-base text-blue-700 font-bold ml-1">{demoCode}</strong>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setCode(demoCode)}
+                      className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition cursor-pointer text-xs"
+                    >
+                      Autocompletar
+                    </button>
+                  </div>
+                )}
 
                 <form onSubmit={handleVerifyCode} className="space-y-6">
                   <div>
