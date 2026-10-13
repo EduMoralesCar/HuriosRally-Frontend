@@ -1,4 +1,5 @@
-﻿import React, { useState } from "react";
+import React, { useState } from "react";
+import { Link } from "react-router-dom";
 import { requestPasswordReset } from "../api/auth";
 import Navbar from "../components/layout/Navbar";
 
@@ -12,6 +13,7 @@ export const ResetPassword: React.FC = () => {
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [resetToken, setResetToken] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -19,7 +21,10 @@ export const ResetPassword: React.FC = () => {
     setError(null);
     
     try {
-      await requestPasswordReset(email);
+      const data = await requestPasswordReset(email);
+      if (data?.token) {
+        setResetToken(data.token);
+      }
       setIsSubmitted(true);
     } catch (err: any) {
       setError(err.message || "Error al enviar el enlace");
@@ -119,17 +124,29 @@ export const ResetPassword: React.FC = () => {
                 </svg>
               </div>
               <h2 className="text-xl font-bold text-[var(--Primary_7)] mb-2">
-                ¡Enlace enviado!
+                ¡Solicitud generada con éxito!
               </h2>
               <p className="text-[var(--Primary_5)] text-sm mb-6">
-                Revisa tu correo electrónico para continuar con la recuperación de tu contraseña.
+                Puedes restablecer tu contraseña directamente ahora mismo con el siguiente botón:
               </p>
-              <a 
-                href="/login" 
-                className="inline-flex items-center text-[var(--Primary_5)] hover:text-[var(--Primary_6)] text-sm font-medium transition-colors duration-200"
-              >
-                Volver al inicio de sesión
-              </a>
+
+              {resetToken && (
+                <Link
+                  to={`/new-password?token=${resetToken}&email=${encodeURIComponent(email)}`}
+                  className="w-full mb-4 inline-block bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold py-3 px-6 rounded-xl shadow-lg transition duration-200 text-center"
+                >
+                  🔑 Restablecer mi contraseña ahora
+                </Link>
+              )}
+
+              <div className="mt-3">
+                <Link 
+                  to="/login" 
+                  className="inline-flex items-center text-[var(--Primary_5)] hover:text-[var(--Primary_6)] text-sm font-medium transition-colors duration-200"
+                >
+                  Volver al inicio de sesión
+                </Link>
+              </div>
             </div>
           )}
         </div>
