@@ -2,8 +2,11 @@
 
 export const WHATSAPP_CONFIG = {
   // Formato internacional SIN "+", SIN espacios, SIN guiones
-  // Perú: 51 + 9 dígitos
-  phoneNumber: import.meta.env.VITE_WHATSAPP_NUMBER || "51999999999",
+  // Perú: 51 + 9 dígitos (añade 51 automáticamente si son 9 dígitos)
+  phoneNumber: (() => {
+    const raw = String(import.meta.env.VITE_WHATSAPP_NUMBER || "51953157200").replace(/\D/g, "");
+    return raw.length === 9 ? `51${raw}` : raw;
+  })(),
 
   // Mensaje por defecto al abrir el chat
   defaultMessage:
