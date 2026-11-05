@@ -1,4 +1,4 @@
-﻿// src/routes/AppRoutes.tsx
+// src/routes/AppRoutes.tsx
 import React from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import Home from "../pages/Home";
@@ -21,6 +21,8 @@ import { Inventory } from "../pages/Inventory";
 import BoletasFacturas from "../pages/BoletasFacturas";
 import { Category } from "../pages/Category";
 import { MyOrders } from "../pages/MyOrders";
+import { ClasificadorML } from "../pages/ClasificadorML";
+
 const AppRoutes: React.FC = () => (
   <CartProvider>
     <Router>
@@ -42,7 +44,8 @@ const AppRoutes: React.FC = () => (
         <Route path="/my-orders" element={<MyOrders />} />
         <Route path="/admin-profile" element={<AdminProfile />} />
         <Route path="/inventario" element={<Inventory />} />
-  <Route path="/boletas-facturas" element={<BoletasFacturas />} />
+        <Route path="/boletas-facturas" element={<BoletasFacturas />} />
+        <Route path="/clasificador-ml" element={<ClasificadorML />} />
 
         {/* catch-all: muestra la location en la UI si no hubo match */}
         <Route
