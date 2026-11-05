@@ -8,11 +8,17 @@ export interface ProductoSugeridoML {
   stock_disponible: number;
 }
 
+export type TipoIntencion =
+  | "COTIZACION"
+  | "CONSULTA_TECNICA"
+  | "ESTADO_PEDIDO"
+  | "SPAM";
+
 export interface PrediccionMLResponse {
   id_conversacion: string;
   texto_cliente: string;
   texto_normalizado: string;
-  intencion_predicha: "COTIZACION" | "CONSULTA_TECNICA" | "ESTADO_PEDIDO" | "SPAM";
+  intencion_predicha: TipoIntencion;
   confianza_modelo: number;
   probabilidades: Record<string, number>;
   hora_del_dia: number;
@@ -20,7 +26,6 @@ export interface PrediccionMLResponse {
   requiere_derivacion_humana: boolean;
   accion_negocio_sugerida: string;
   modelo_utilizado: string;
-  origen_inferencia?: string;
   productos_sugeridos_supabase?: ProductoSugeridoML[];
 }
 
@@ -35,9 +40,9 @@ export interface ModeloComparadoInfo {
   ganador: boolean;
 }
 
-export const MODELOS_COMPARADOS_APF3: ModeloComparadoInfo[] = [
+export const MODELOS_COMPARADOS: ModeloComparadoInfo[] = [
   {
-    nombre: "SVM (Support Vector Machine - C=0.3, Lineal)",
+    nombre: "Support Vector Machine (SVM Lineal)",
     cv_f1: 0.9422,
     train_f1: 0.9543,
     test_accuracy: 0.9423,
@@ -47,8 +52,8 @@ export const MODELOS_COMPARADOS_APF3: ModeloComparadoInfo[] = [
     ganador: true,
   },
   {
-    nombre: "Regresión Logística Multiclase (C=0.8)",
-    cv_f1: 0.9260,
+    nombre: "Regresión Logística Multiclase",
+    cv_f1: 0.926,
     train_f1: 0.9589,
     test_accuracy: 0.9327,
     test_precision: 0.9393,
@@ -57,7 +62,7 @@ export const MODELOS_COMPARADOS_APF3: ModeloComparadoInfo[] = [
     ganador: false,
   },
   {
-    nombre: "Random Forest (150 árboles, max_depth=7)",
+    nombre: "Random Forest (Ensamble de Árboles)",
     cv_f1: 0.9282,
     train_f1: 0.9567,
     test_accuracy: 0.8942,
@@ -67,16 +72,27 @@ export const MODELOS_COMPARADOS_APF3: ModeloComparadoInfo[] = [
     ganador: false,
   },
   {
-    nombre: "K-Nearest Neighbors (KNN - k=15, coseno)",
+    nombre: "K-Nearest Neighbors (KNN)",
     cv_f1: 0.8941,
     train_f1: 0.8897,
-    test_accuracy: 0.8750,
+    test_accuracy: 0.875,
     test_precision: 0.8804,
     test_recall: 0.8708,
     test_f1: 0.8732,
     ganador: false,
   },
 ];
+
+const ACCIONES_LIMPIAS: Record<TipoIntencion, string> = {
+  COTIZACION:
+    "Enviar cotización automática con precio actualizado, stock disponible en almacén y opciones de pago (Yape, Plin o tarjeta).",
+  CONSULTA_TECNICA:
+    "Brindar ficha de compatibilidad técnica del repuesto y, si requiere validación mecánica específica, asignar a un asesor.",
+  ESTADO_PEDIDO:
+    "Consultar el estado actual de la compra y notificar al cliente el seguimiento de entrega o disponibilidad de recojo.",
+  SPAM:
+    "Archivar automáticamente como mensaje publicitario o ajeno al giro del negocio sin generar alerta en ventas.",
+};
 
 function normalizarJergaLocal(texto: string): string {
   return texto
@@ -94,6 +110,14 @@ function normalizarJergaLocal(texto: string): string {
     .trim();
 }
 
+function limpiarTextoAccion(intencion: TipoIntencion, requiereHumano: boolean): string {
+  const base = ACCIONES_LIMPIAS[intencion] || "Asignar a bandeja de atención.";
+  if (requiereHumano && intencion !== "SPAM") {
+    return `Atención asistida recomendada: ${base}`;
+  }
+  return base;
+}
+
 export async function clasificarConsultaML(
   textoCliente: string,
   horaDelDia: number,
@@ -108,13 +132,19 @@ export async function clasificarConsultaML(
       }),
     });
     if (response.ok) {
-      const data = await response.json();
+      const data = (await response.json()) as PrediccionMLResponse;
       if (data && data.intencion_predicha) {
-        return data as PrediccionMLResponse;
+        return {
+          ...data,
+          accion_negocio_sugerida: limpiarTextoAccion(
+            data.intencion_predicha,
+            data.requiere_derivacion_humana,
+          ),
+        };
       }
     }
   } catch {
-    // Continúa con inferencia local sincronizada si el backend está despertando en Render
+    // Continúa con inferencia local sincronizada si el servidor está en reposo
   }
 
   const norm = normalizarJergaLocal(textoCliente);
@@ -156,36 +186,21 @@ export async function clasificarConsultaML(
   };
 
   const entries = Object.entries(probabilidades).sort((a, b) => b[1] - a[1]);
-  const intencion_predicha = entries[0][0] as PrediccionMLResponse["intencion_predicha"];
+  const intencion_predicha = entries[0][0] as TipoIntencion;
   const confianza_modelo = entries[0][1];
   const requiere_derivacion_humana =
-    confianza_modelo < 0.7 || (intencion_predicha === "CONSULTA_TECNICA" && confianza_modelo < 0.85);
-
-  const acciones: Record<string, string> = {
-    COTIZACION:
-      "Consultar stock y precio en tiempo real en Supabase PostgreSQL y enviar cotización automática con enlace de carrito y pago Yape/Plin.",
-    CONSULTA_TECNICA:
-      "Verificar ficha técnica de compatibilidad Bajaj/TVS/Lineal y, de requerir validación mecánica fina, escalar al especialista de mostrador en Av. 22 de Agosto 1012, Comas.",
-    ESTADO_PEDIDO:
-      "Consultar tabla de órdenes por código de pedido/Yape en HuriosRally-backend y notificar estado de despacho o disponibilidad de recojo en tienda.",
-    SPAM:
-      "Filtrar mensaje automáticamente sin consumir tiempo de los vendedores ni generar alerta en la bandeja de atención.",
-  };
-
-  let accion = acciones[intencion_predicha];
-  if (requiere_derivacion_humana && intencion_predicha !== "SPAM") {
-    accion = `[ESCALAMIENTO HUMANO PRIORITARIO - Confianza ${confianza_modelo.toFixed(2)}] ${accion}`;
-  }
+    confianza_modelo < 0.7 ||
+    (intencion_predicha === "CONSULTA_TECNICA" && confianza_modelo < 0.85);
 
   const productosDemo: ProductoSugeridoML[] =
     intencion_predicha === "COTIZACION" || intencion_predicha === "CONSULTA_TECNICA"
       ? [
           {
-            id: 1,
-            nombre: "Kit de Cilindro Standard Bajaj Torito RE 205 4T",
+            id: 4574,
+            nombre: "Cilindro Completo Torito Bajaj 4T",
             categoria: "Motor",
-            precio_soles: 145.0,
-            stock_disponible: 18,
+            precio_soles: 185.0,
+            stock_disponible: 23,
           },
           {
             id: 9,
@@ -198,7 +213,7 @@ export async function clasificarConsultaML(
       : [];
 
   return {
-    id_conversacion: crypto.randomUUID ? crypto.randomUUID() : "uuid-anon-29733",
+    id_conversacion: crypto.randomUUID ? crypto.randomUUID() : "conv-01",
     texto_cliente: textoCliente,
     texto_normalizado: norm,
     intencion_predicha,
@@ -207,9 +222,11 @@ export async function clasificarConsultaML(
     hora_del_dia: horaDelDia,
     es_fuera_horario: fueraHorario,
     requiere_derivacion_humana,
-    accion_negocio_sugerida: accion,
-    modelo_utilizado: "SVM (Support Vector Machine - C=0.3, Lineal)",
-    origen_inferencia: "Pipeline SVM HuriosRally-ML (Semilla 42)",
+    accion_negocio_sugerida: limpiarTextoAccion(
+      intencion_predicha,
+      requiere_derivacion_humana,
+    ),
+    modelo_utilizado: "SVM Lineal",
     productos_sugeridos_supabase: productosDemo,
   };
 }

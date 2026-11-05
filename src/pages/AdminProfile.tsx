@@ -170,7 +170,7 @@ export function AdminProfile() {
                     <section className="flex gap-4 mb-6 flex-wrap justify-between">
                         <ButtonAdmin label="INVENTARIO" route="/inventario" />
                         <ButtonAdmin label="BOLETAS/FACTURAS" route="/boletas-facturas" />
-                        <ButtonAdmin label="CLASIFICADOR ML (IA)" route="/clasificador-ml" />
+                        <ButtonAdmin label="CLASIFICADOR DE CONSULTAS" route="/clasificador-ml" />
                     </section>
 
                     {/* Botones de exportación */}
