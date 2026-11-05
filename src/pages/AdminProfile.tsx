@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "../components/layout/Navbar";
 import { ButtonAdmin } from "../components/ui/ButtonAdmin";
@@ -170,6 +170,7 @@ export function AdminProfile() {
                     <section className="flex gap-4 mb-6 flex-wrap justify-between">
                         <ButtonAdmin label="INVENTARIO" route="/inventario" />
                         <ButtonAdmin label="BOLETAS/FACTURAS" route="/boletas-facturas" />
+                        <ButtonAdmin label="CLASIFICADOR ML (IA)" route="/clasificador-ml" />
                     </section>
 
                     {/* Botones de exportación */}
@@ -293,5 +294,3 @@ export function AdminProfile() {
         </>
     );
 }
-
-
