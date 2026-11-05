@@ -12,8 +12,8 @@ export default function WhatsAppButton({ message, size = 56 }: Props) {
         <button
             type="button"
             onClick={() => openWhatsApp(message)}
-            aria-label="Contactar por WhatsApp (+51 932 544 926)"
-            title="Contactar por WhatsApp (+51 932 544 926)"
+            aria-label="Contactar por WhatsApp (+51 937 395 986)"
+            title="Contactar por WhatsApp (+51 937 395 986)"
             style={{
                 position: "fixed",
                 bottom: "24px",

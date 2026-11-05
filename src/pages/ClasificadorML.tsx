@@ -166,14 +166,14 @@ export const ClasificadorML: React.FC = () => {
     status: "DISCONNECTED",
     qr_data_url: null,
     connected_phone: null,
-    target_phone: "51932544926",
+    target_phone: "51937395986",
   });
   const [cargandoQR, setCargandoQR] = useState(false);
   const [codigoVinculacion, setCodigoVinculacion] = useState<string | null>(
     null,
   );
   const [telefonoVinculacion, setTelefonoVinculacion] =
-    useState<string>("932544926");
+    useState<string>("937395986");
 
   const recargarBandeja = async (silencioso = false) => {
     if (!silencioso) setCargandoHistorial(true);
@@ -284,7 +284,7 @@ export const ClasificadorML: React.FC = () => {
                     : "bg-amber-50 text-amber-700 border-amber-200"
                 }`}
               >
-                WhatsApp +51 932 544 926:{" "}
+                WhatsApp +51 937 395 986:{" "}
                 {estaConectadoWA
                   ? "Conectado (Respondiendo en vivo)"
                   : "Listo para vincular"}
@@ -295,7 +295,7 @@ export const ClasificadorML: React.FC = () => {
             </h1>
             <p className="text-sm text-slate-600 mt-1">
               Todas las consultas enviadas por los clientes al WhatsApp{" "}
-              <strong className="text-slate-800">+51 932 544 926</strong> son
+              <strong className="text-slate-800">+51 937 395 986</strong> son
               respondidas automáticamente por el asistente y quedan registradas
               aquí en tiempo real.
             </p>
@@ -312,8 +312,8 @@ export const ClasificadorML: React.FC = () => {
             >
               <span>
                 {estaConectadoWA
-                  ? "WhatsApp Vinculado (+51 932 544 926)"
-                  : "Vincular WhatsApp (+51 932 544 926)"}
+                  ? "WhatsApp Vinculado (+51 937 395 986)"
+                  : "Vincular WhatsApp (+51 937 395 986)"}
               </span>
             </button>
             <button
@@ -344,16 +344,16 @@ export const ClasificadorML: React.FC = () => {
           </div>
         </div>
 
-        {/* Modal / Panel de Vinculación de WhatsApp Real (+51 932 544 926) */}
+        {/* Modal / Panel de Vinculación de WhatsApp Real (+51 937 395 986) */}
         {mostrarModalWA && (
           <div className="bg-white rounded-xl shadow-sm border-2 border-emerald-500 p-6 mb-6">
             <div className="flex items-start justify-between gap-4 mb-4">
               <div>
                 <h2 className="text-base font-bold text-slate-900">
-                  Conexión de Robot de WhatsApp Real (+51 932 544 926)
+                  Conexión de Robot de WhatsApp Real (+51 937 395 986)
                 </h2>
                 <p className="text-xs text-slate-600 mt-0.5">
-                  Vincula tu segundo número (<strong>932 544 926</strong>) de
+                  Vincula tu segundo número (<strong>937 395 986</strong>) de
                   forma 100 % gratuita para que responda automáticamente en
                   WhatsApp a cualquier cliente y registre cada conversación en
                   esta bandeja.
@@ -374,19 +374,19 @@ export const ClasificadorML: React.FC = () => {
                     <span className="w-3 h-3 rounded-full bg-emerald-500 animate-ping" />
                     <span className="text-sm font-bold text-emerald-900">
                       ¡Robot de WhatsApp Activo y Conectado! (+
-                      {waStatus.connected_phone || "51932544926"})
+                      {waStatus.connected_phone || "51937395986"})
                     </span>
                   </div>
                   <p className="text-xs text-emerald-800 mt-1.5">
                     Cualquier persona que escriba al{" "}
-                    <strong>+51 932 544 926</strong> en WhatsApp recibirá
+                    <strong>+51 937 395 986</strong> en WhatsApp recibirá
                     respuesta automática con precios y stock reales, y su
                     consulta aparecerá inmediatamente aquí abajo.
                   </p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <a
-                    href="https://wa.me/51932544926?text=Hola%2C%20tienes%20cilindro%20para%20Torito%20Bajaj%204T%20y%20a%20cu%C3%A1nto%20sale%3F"
+                    href="https://wa.me/51937395986?text=Hola%2C%20tienes%20cilindro%20para%20Torito%20Bajaj%204T%20y%20a%20cu%C3%A1nto%20sale%3F"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition"
@@ -443,13 +443,13 @@ export const ClasificadorML: React.FC = () => {
                 <div className="space-y-4">
                   <div>
                     <h3 className="text-sm font-bold text-slate-900 mb-2">
-                      Pasos para activar el robot en tu número 932 544 926:
+                      Pasos para activar el robot en tu número 937 395 986:
                     </h3>
                     <ol className="text-xs text-slate-700 space-y-2 list-decimal list-inside">
                       <li>
                         Abre <strong>WhatsApp</strong> o{" "}
                         <strong>WhatsApp Business</strong> en el celular donde
-                        tienes el número <strong>932 544 926</strong>.
+                        tienes el número <strong>937 395 986</strong>.
                       </li>
                       <li>
                         Toca el menú <strong>⋮ (tres puntos)</strong> o{" "}
@@ -462,7 +462,7 @@ export const ClasificadorML: React.FC = () => {
                       </li>
                       <li>
                         ¡Listo! Apenas conecte, cualquier mensaje enviado al{" "}
-                        <strong>932 544 926</strong> será respondido
+                        <strong>937 395 986</strong> será respondido
                         automáticamente por el robot y se guardará aquí.
                       </li>
                     </ol>
@@ -478,7 +478,7 @@ export const ClasificadorML: React.FC = () => {
                         type="text"
                         value={telefonoVinculacion}
                         onChange={(e) => setTelefonoVinculacion(e.target.value)}
-                        placeholder="932544926"
+                        placeholder="937395986"
                         className="px-3 py-1.5 text-xs border border-slate-300 rounded-lg w-36"
                       />
                       <button
@@ -702,7 +702,7 @@ export const ClasificadorML: React.FC = () => {
                   Conversaciones de Clientes ({historialFiltrado.length})
                 </h2>
                 <p className="text-xs text-slate-500">
-                  Mensajes recibidos y respondidos en WhatsApp (+51 932 544 926)
+                  Mensajes recibidos y respondidos en WhatsApp (+51 937 395 986)
                 </p>
               </div>
               {filtroCategoria !== "TODAS" && (

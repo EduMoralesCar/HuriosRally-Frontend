@@ -211,7 +211,7 @@ export async function obtenerEstadoWhatsApp(): Promise<WhatsAppBotStatus> {
     status: "DISCONNECTED",
     qr_data_url: null,
     connected_phone: null,
-    target_phone: "51932544926",
+    target_phone: "51937395986",
   };
 }
 
@@ -226,7 +226,7 @@ export async function generarQRWhatsApp(): Promise<WhatsAppBotStatus> {
 }
 
 export async function solicitarCodigoVinculacion(
-  phone = "51932544926",
+  phone = "51937395986",
 ): Promise<{ pairing_code?: string; error?: string }> {
   try {
     const res = await fetch(`${ML_SERVICE_URL}/whatsapp/pair-code`, {
@@ -412,7 +412,7 @@ export async function obtenerHistorialConsultasML(
     }
   };
 
-  // 1. Mensajes capturados directamente desde WhatsApp Real (+51 932 544 926)
+  // 1. Mensajes capturados directamente desde WhatsApp Real (+51 937 395 986)
   try {
     const resWa = await fetch(`${ML_SERVICE_URL}/whatsapp/messages`);
     if (resWa.ok) {

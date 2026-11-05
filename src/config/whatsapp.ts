@@ -1,15 +1,8 @@
 // src/config/whatsapp.ts
 
 export const WHATSAPP_CONFIG = {
-  // Número oficial de atención automatizada de Hurios Rally (+51 932 544 926)
-  phoneNumber: (() => {
-    const envVal = String(import.meta.env.VITE_WHATSAPP_NUMBER || "").replace(/\D/g, "");
-    // Si en el entorno quedó el número personal anterior (953157200) o está vacío, usar el segundo número 932544926
-    if (!envVal || envVal.endsWith("953157200")) {
-      return "51932544926";
-    }
-    return envVal.length === 9 ? `51${envVal}` : envVal;
-  })(),
+  // Número oficial de atención automatizada de Hurios Rally (+51 937 395 986)
+  phoneNumber: "51937395986",
 
   // Mensaje por defecto al abrir el chat
   defaultMessage:
