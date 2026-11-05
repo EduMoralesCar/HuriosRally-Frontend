@@ -1,5 +1,8 @@
 import { API_BASE_URL } from "../config/api";
 
+export const ML_SERVICE_URL =
+  import.meta.env.VITE_ML_SERVICE_URL || "https://huriosrally-ml.onrender.com";
+
 export interface ProductoSugeridoML {
   id: number;
   nombre: string;
@@ -28,8 +31,20 @@ export interface PrediccionMLResponse {
   requiere_derivacion_humana: boolean;
   accion_negocio_sugerida: string;
   respuesta_automatica_bot?: string;
+  remitente_whatsapp?: string;
+  canal?: string;
   modelo_utilizado: string;
   productos_sugeridos_supabase?: ProductoSugeridoML[];
+}
+
+export interface WhatsAppBotStatus {
+  status: "DISCONNECTED" | "CONNECTING" | "QR_READY" | "CONNECTED" | "STARTING";
+  qr_data_url: string | null;
+  pairing_code?: string | null;
+  connected_phone: string | null;
+  connected_name?: string | null;
+  target_phone: string;
+  last_updated?: string;
 }
 
 export interface ModeloComparadoInfo {
@@ -183,6 +198,58 @@ function guardarEnCacheLocal(item: PrediccionMLResponse) {
   }
 }
 
+export async function obtenerEstadoWhatsApp(): Promise<WhatsAppBotStatus> {
+  try {
+    const res = await fetch(`${ML_SERVICE_URL}/whatsapp/status`);
+    if (res.ok) {
+      return (await res.json()) as WhatsAppBotStatus;
+    }
+  } catch {
+    // fallback
+  }
+  return {
+    status: "DISCONNECTED",
+    qr_data_url: null,
+    connected_phone: null,
+    target_phone: "51932544926",
+  };
+}
+
+export async function generarQRWhatsApp(): Promise<WhatsAppBotStatus> {
+  try {
+    await fetch(`${ML_SERVICE_URL}/whatsapp/connect`, { method: "POST" });
+    await new Promise((r) => setTimeout(r, 2200));
+    return await obtenerEstadoWhatsApp();
+  } catch {
+    return await obtenerEstadoWhatsApp();
+  }
+}
+
+export async function solicitarCodigoVinculacion(
+  phone = "51932544926",
+): Promise<{ pairing_code?: string; error?: string }> {
+  try {
+    const res = await fetch(`${ML_SERVICE_URL}/whatsapp/pair-code`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone }),
+    });
+    return await res.json();
+  } catch {
+    return { error: "No se pudo generar el código en este momento." };
+  }
+}
+
+export async function desvincularWhatsApp(): Promise<WhatsAppBotStatus> {
+  try {
+    await fetch(`${ML_SERVICE_URL}/whatsapp/logout`, { method: "POST" });
+    await new Promise((r) => setTimeout(r, 1500));
+  } catch {
+    // ignore
+  }
+  return await obtenerEstadoWhatsApp();
+}
+
 export async function clasificarConsultaML(
   textoCliente: string,
   horaDelDia?: number,
@@ -333,25 +400,47 @@ export async function obtenerHistorialConsultasML(
   semillaInicial: PrediccionMLResponse[],
 ): Promise<PrediccionMLResponse[]> {
   const locales = leerCacheLocal();
+  const acumulados: PrediccionMLResponse[] = [];
+  const idsVistos = new Set<string>();
+
+  const agregarUnicos = (lista: PrediccionMLResponse[]) => {
+    for (const item of lista) {
+      if (item && item.id_conversacion && !idsVistos.has(item.id_conversacion)) {
+        idsVistos.add(item.id_conversacion);
+        acumulados.push(item);
+      }
+    }
+  };
+
+  // 1. Mensajes capturados directamente desde WhatsApp Real (+51 932 544 926)
+  try {
+    const resWa = await fetch(`${ML_SERVICE_URL}/whatsapp/messages`);
+    if (resWa.ok) {
+      const listaWa = (await resWa.json()) as PrediccionMLResponse[];
+      if (Array.isArray(listaWa)) {
+        agregarUnicos(listaWa);
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  // 2. Mensajes persistidos en la Base de Datos del Backend
   try {
     const response = await fetch(`${API_BASE_URL}/api/ml/historial`);
     if (response.ok) {
       const remotos = (await response.json()) as PrediccionMLResponse[];
-      if (Array.isArray(remotos) && remotos.length > 0) {
-        const idsRemotos = new Set(remotos.map((r) => r.id_conversacion));
-        const soloLocales = locales.filter(
-          (l) => !idsRemotos.has(l.id_conversacion),
-        );
-        return [...soloLocales, ...remotos];
+      if (Array.isArray(remotos)) {
+        agregarUnicos(remotos);
       }
     }
   } catch {
-    // Usa caché local + registros iniciales si el servidor está actualizándose
+    // ignore
   }
 
-  const idsLocales = new Set(locales.map((l) => l.id_conversacion));
-  const restantes = semillaInicial.filter(
-    (s) => !idsLocales.has(s.id_conversacion),
-  );
-  return [...locales, ...restantes];
+  // 3. Caché local + semilla base
+  agregarUnicos(locales);
+  agregarUnicos(semillaInicial);
+
+  return acumulados;
 }

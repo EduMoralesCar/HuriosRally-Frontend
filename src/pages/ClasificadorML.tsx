@@ -1,62 +1,78 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "../components/layout/Navbar";
+import Footer from "../components/layout/Footer";
 import {
-  obtenerHistorialConsultasML,
   MODELOS_COMPARADOS,
+  obtenerHistorialConsultasML,
+  obtenerEstadoWhatsApp,
+  generarQRWhatsApp,
+  solicitarCodigoVinculacion,
+  desvincularWhatsApp,
   type PrediccionMLResponse,
   type TipoIntencion,
+  type WhatsAppBotStatus,
 } from "../api/ml";
 
-const META_INTENCION: Record<
+const COLOR_INTENCION: Record<
   TipoIntencion,
-  { nombre: string; badge: string; dot: string }
+  { bg: string; text: string; border: string; label: string; dot: string }
 > = {
   COTIZACION: {
-    nombre: "Cotización",
-    badge: "bg-blue-50 text-blue-800 border-blue-200",
-    dot: "bg-blue-600",
+    bg: "#eff6ff",
+    text: "#1d4ed8",
+    border: "#bfdbfe",
+    label: "Cotización",
+    dot: "#2563eb",
   },
   CONSULTA_TECNICA: {
-    nombre: "Consulta técnica",
-    badge: "bg-teal-50 text-teal-800 border-teal-200",
-    dot: "bg-teal-600",
+    bg: "#ecfdf5",
+    text: "#047857",
+    border: "#a7f3d0",
+    label: "Consulta técnica",
+    dot: "#10b981",
   },
   ESTADO_PEDIDO: {
-    nombre: "Estado de pedido",
-    badge: "bg-amber-50 text-amber-800 border-amber-200",
-    dot: "bg-amber-500",
+    bg: "#fffbeb",
+    text: "#b45309",
+    border: "#fde68a",
+    label: "Estado de pedido",
+    dot: "#f59e0b",
   },
   SPAM: {
-    nombre: "No deseado",
-    badge: "bg-gray-100 text-gray-700 border-gray-300",
-    dot: "bg-gray-500",
+    bg: "#fef2f2",
+    text: "#b91c1c",
+    border: "#fecaca",
+    label: "No deseado",
+    dot: "#ef4444",
   },
 };
 
-const CONSULTAS_INICIALES: PrediccionMLResponse[] = [
+const HISTORIAL_BASE: PrediccionMLResponse[] = [
   {
-    id_conversacion: "c1f4-8821",
-    timestamp_primer_mensaje: "Hoy, 21:14",
+    id_conversacion: "base-cot-01",
+    timestamp_primer_mensaje: "Hoy, 20:15",
     texto_cliente:
-      "Hola maestro, ¿tienes planchado de cilindro para mi bajajita Torito RE 205 y a cuánto me dejas?",
+      "Buenas noches amigo, ¿tienes cilindro completo para Torito Bajaj 4T y a cuánto sale?",
     texto_normalizado:
-      "hola maestro tienes kit cilindro de cilindro para mi bajaj torito re 205 y a cuanto me dejas",
+      "buenas noches amigo tienes cilindro completo para bajaj torito re 4t y a cuanto sale",
     intencion_predicha: "COTIZACION",
-    confianza_modelo: 0.9905,
+    confianza_modelo: 0.964,
     probabilidades: {
-      COTIZACION: 0.9905,
-      CONSULTA_TECNICA: 0.0001,
-      ESTADO_PEDIDO: 0.0001,
-      SPAM: 0.0093,
+      COTIZACION: 0.964,
+      CONSULTA_TECNICA: 0.022,
+      ESTADO_PEDIDO: 0.009,
+      SPAM: 0.005,
     },
-    hora_del_dia: 21,
+    hora_del_dia: 20,
     es_fuera_horario: true,
     requiere_derivacion_humana: false,
     accion_negocio_sugerida:
       "Enviar cotización automática con precio actualizado, stock disponible en almacén y opciones de pago (Yape, Plin o tarjeta).",
     respuesta_automatica_bot:
-      "¡Hola! Gracias por escribir a Hurios Rally. Tenemos disponibilidad inmediata para tu consulta:\n• Cilindro Completo Torito Bajaj 4T — S/ 185.00 (Stock: 23 und.)\n• Kit de Discos de Embrague Kevlar Bajaj Torito — S/ 42.00 (Stock: 34 und.)\nPuedes agregarlos al carrito en nuestra web con pago por Yape, Plin o tarjeta, o continuar con un asesor.",
+      "¡Hola! Gracias por escribir a Hurios Rally. Tenemos disponibilidad inmediata para tu consulta:\n• Cilindro Completo Torito Bajaj 4T — S/ 185.00 (23 en stock)\nPuedes comprarlos directamente en la web con Yape, Plin o tarjeta, o continuar con un asesor.",
+    remitente_whatsapp: "+51 953 157 200",
+    canal: "WHATSAPP_REAL",
     modelo_utilizado: "SVM Lineal",
     productos_sugeridos_supabase: [
       {
@@ -66,37 +82,59 @@ const CONSULTAS_INICIALES: PrediccionMLResponse[] = [
         precio_soles: 185.0,
         stock_disponible: 23,
       },
-      {
-        id: 9,
-        nombre: "Kit de Discos de Embrague Kevlar Bajaj Torito",
-        categoria: "Transmisión",
-        precio_soles: 42.0,
-        stock_disponible: 34,
-      },
     ],
   },
   {
-    id_conversacion: "a9d2-3410",
+    id_conversacion: "base-ped-02",
     timestamp_primer_mensaje: "Hoy, 19:40",
     texto_cliente:
-      "Jefe una consulta, ¿el kit de discos de embrague de la Pulsar 180 le calza a la Discover 150?",
+      "Hola, ya realicé el pago por Yape del pedido de mis zapatas de freno, ¿a qué hora sale el envío?",
     texto_normalizado:
-      "jefe una consulta el kit de discos de embrague de la pulsar 180 le calza a la discover 150",
-    intencion_predicha: "CONSULTA_TECNICA",
-    confianza_modelo: 0.9185,
+      "hola ya realice el pago por yape del pedido de mis zapata freno a que hora sale el envio",
+    intencion_predicha: "ESTADO_PEDIDO",
+    confianza_modelo: 0.951,
     probabilidades: {
-      COTIZACION: 0.0512,
-      CONSULTA_TECNICA: 0.9185,
-      ESTADO_PEDIDO: 0.0183,
-      SPAM: 0.012,
+      ESTADO_PEDIDO: 0.951,
+      COTIZACION: 0.028,
+      CONSULTA_TECNICA: 0.015,
+      SPAM: 0.006,
     },
     hora_del_dia: 19,
     es_fuera_horario: true,
     requiere_derivacion_humana: false,
     accion_negocio_sugerida:
+      "Consultar el estado actual de la compra y notificar al cliente el seguimiento de entrega o disponibilidad de recojo.",
+    respuesta_automatica_bot:
+      "¡Hola! Hemos recibido tu consulta sobre el estado de tu compra o pago. Tu solicitud ya está priorizada en el área de despacho; puedes revisar tu comprobante en 'Mis Pedidos' o indicarnos tu número de orden.",
+    remitente_whatsapp: "Cliente WhatsApp",
+    canal: "WHATSAPP_REAL",
+    modelo_utilizado: "SVM Lineal",
+    productos_sugeridos_supabase: [],
+  },
+  {
+    id_conversacion: "base-tec-03",
+    timestamp_primer_mensaje: "Hoy, 16:10",
+    texto_cliente:
+      "Consulta técnica: ¿el disco de embrague de Torito 4T le calza exacto al modelo FL cromado o cambia la medida?",
+    texto_normalizado:
+      "consulta tecnica el disco de embrague de bajaj torito re 4t le calza exacto al modelo fl cromado o cambia la medida",
+    intencion_predicha: "CONSULTA_TECNICA",
+    confianza_modelo: 0.938,
+    probabilidades: {
+      CONSULTA_TECNICA: 0.938,
+      COTIZACION: 0.044,
+      ESTADO_PEDIDO: 0.012,
+      SPAM: 0.006,
+    },
+    hora_del_dia: 16,
+    es_fuera_horario: false,
+    requiere_derivacion_humana: false,
+    accion_negocio_sugerida:
       "Brindar ficha de compatibilidad técnica del repuesto y, si requiere validación mecánica específica, asignar a un asesor.",
     respuesta_automatica_bot:
-      "¡Hola! Hemos identificado tu consulta técnica. En nuestro catálogo contamos con: Kit de Discos de Embrague Kevlar Bajaj Torito (S/ 42.00, Stock: 34 und.). El repuesto cuenta con garantía de compatibilidad estándar.",
+      "¡Hola! Sobre tu consulta técnica: contamos con Kit de Discos de Embrague Kevlar Bajaj Torito (S/ 42.00, 34 und. en stock). El repuesto cuenta con garantía de compatibilidad estándar.",
+    remitente_whatsapp: "Cliente WhatsApp",
+    canal: "WHATSAPP_REAL",
     modelo_utilizado: "SVM Lineal",
     productos_sugeridos_supabase: [
       {
@@ -108,611 +146,800 @@ const CONSULTAS_INICIALES: PrediccionMLResponse[] = [
       },
     ],
   },
-  {
-    id_conversacion: "b4e7-9102",
-    timestamp_primer_mensaje: "Hoy, 15:22",
-    texto_cliente:
-      "Buenas tardes, ya hice el Yape de S/ 185 por mi pedido #PED-4510, ¿a qué hora sale el envío?",
-    texto_normalizado:
-      "buenas tardes ya hice el yape de s/ 185 por mi pedido #ped 4510 a que hora sale el envio",
-    intencion_predicha: "ESTADO_PEDIDO",
-    confianza_modelo: 0.964,
-    probabilidades: {
-      COTIZACION: 0.018,
-      CONSULTA_TECNICA: 0.009,
-      ESTADO_PEDIDO: 0.964,
-      SPAM: 0.009,
-    },
-    hora_del_dia: 15,
-    es_fuera_horario: false,
-    requiere_derivacion_humana: false,
-    accion_negocio_sugerida:
-      "Consultar el estado actual de la compra y notificar al cliente el seguimiento de entrega o disponibilidad de recojo.",
-    respuesta_automatica_bot:
-      "¡Hola! Hemos identificado tu consulta sobre el estado de tu compra o pago. Tu solicitud ya está priorizada en el área de despacho; puedes revisar tu comprobante en 'Mis Pedidos' o indicarnos tu número de orden.",
-    modelo_utilizado: "SVM Lineal",
-    productos_sugeridos_supabase: [],
-  },
-  {
-    id_conversacion: "f0c1-1189",
-    timestamp_primer_mensaje: "Ayer, 23:05",
-    texto_cliente:
-      "¡Gana hasta S/ 500 diarios desde tu celular sin inversión! Entra a este link bit.ly/gana-facil-2026",
-    texto_normalizado:
-      "gana hasta s/ 500 diarios desde tu celular sin inversion entra a este link bit ly gana facil 2026",
-    intencion_predicha: "SPAM",
-    confianza_modelo: 0.9782,
-    probabilidades: {
-      COTIZACION: 0.008,
-      CONSULTA_TECNICA: 0.005,
-      ESTADO_PEDIDO: 0.0088,
-      SPAM: 0.9782,
-    },
-    hora_del_dia: 23,
-    es_fuera_horario: true,
-    requiere_derivacion_humana: false,
-    accion_negocio_sugerida:
-      "Archivar automáticamente como mensaje publicitario o ajeno al giro del negocio sin generar alerta en ventas.",
-    respuesta_automatica_bot:
-      "Gracias por comunicarte con Hurios Rally. Nuestro canal está dedicado exclusivamente a la venta y asesoría de repuestos para vehículos menores.",
-    modelo_utilizado: "SVM Lineal",
-    productos_sugeridos_supabase: [],
-  },
 ];
 
-export function ClasificadorML() {
+export const ClasificadorML: React.FC = () => {
   const navigate = useNavigate();
-  const [vistaActiva, setVistaActiva] = useState<"bandeja" | "estadisticas">(
-    "bandeja",
-  );
   const [historial, setHistorial] =
-    useState<PrediccionMLResponse[]>(CONSULTAS_INICIALES);
-  const [seleccionadaId, setSeleccionadaId] = useState<string>(
-    CONSULTAS_INICIALES[0].id_conversacion,
+    useState<PrediccionMLResponse[]>(HISTORIAL_BASE);
+  const [seleccionado, setSeleccionado] = useState<PrediccionMLResponse>(
+    HISTORIAL_BASE[0],
   );
   const [filtroCategoria, setFiltroCategoria] = useState<
     "TODAS" | TipoIntencion
   >("TODAS");
+  const [mostrarMetricas, setMostrarMetricas] = useState(false);
+  const [mostrarModalWA, setMostrarModalWA] = useState(false);
   const [cargandoHistorial, setCargandoHistorial] = useState(false);
 
-  const cargarBandeja = useCallback(async () => {
-    setCargandoHistorial(true);
-    try {
-      const lista = await obtenerHistorialConsultasML(CONSULTAS_INICIALES);
-      setHistorial(lista);
-      if (lista.length > 0) {
-        setSeleccionadaId((prev) =>
-          lista.some((x) => x.id_conversacion === prev)
-            ? prev
-            : lista[0].id_conversacion,
+  const [waStatus, setWaStatus] = useState<WhatsAppBotStatus>({
+    status: "DISCONNECTED",
+    qr_data_url: null,
+    connected_phone: null,
+    target_phone: "51932544926",
+  });
+  const [cargandoQR, setCargandoQR] = useState(false);
+  const [codigoVinculacion, setCodigoVinculacion] = useState<string | null>(
+    null,
+  );
+  const [telefonoVinculacion, setTelefonoVinculacion] =
+    useState<string>("932544926");
+
+  const recargarBandeja = async (silencioso = false) => {
+    if (!silencioso) setCargandoHistorial(true);
+    const lista = await obtenerHistorialConsultasML(HISTORIAL_BASE);
+    setHistorial(lista);
+    if (lista.length > 0) {
+      setSeleccionado((prev) => {
+        const existe = lista.find(
+          (i) => i.id_conversacion === prev?.id_conversacion,
         );
-      }
-    } finally {
-      setCargandoHistorial(false);
+        return existe || lista[0];
+      });
     }
-  }, []);
+    if (!silencioso) setCargandoHistorial(false);
+  };
+
+  const verificarWhatsApp = async () => {
+    const st = await obtenerEstadoWhatsApp();
+    setWaStatus(st);
+  };
 
   useEffect(() => {
-    void cargarBandeja();
-    const handler = () => {
-      void cargarBandeja();
-    };
-    window.addEventListener("hurios-nueva-consulta-ml", handler);
-    return () =>
-      window.removeEventListener("hurios-nueva-consulta-ml", handler);
-  }, [cargarBandeja]);
+    recargarBandeja(false);
+    verificarWhatsApp();
 
-  const historialFiltrado = useMemo(() => {
-    if (filtroCategoria === "TODAS") return historial;
-    return historial.filter(
-      (item) => item.intencion_predicha === filtroCategoria,
-    );
-  }, [historial, filtroCategoria]);
+    const interval = setInterval(() => {
+      recargarBandeja(true);
+      verificarWhatsApp();
+    }, 5000);
 
-  const consultaActiva = useMemo(() => {
-    return (
-      historial.find((item) => item.id_conversacion === seleccionadaId) ||
-      historialFiltrado[0] ||
-      historial[0]
-    );
-  }, [historial, historialFiltrado, seleccionadaId]);
+    return () => clearInterval(interval);
+  }, []);
 
-  const conteos = useMemo(() => {
-    return {
-      TODAS: historial.length,
-      COTIZACION: historial.filter((i) => i.intencion_predicha === "COTIZACION")
-        .length,
-      CONSULTA_TECNICA: historial.filter(
-        (i) => i.intencion_predicha === "CONSULTA_TECNICA",
-      ).length,
-      ESTADO_PEDIDO: historial.filter(
-        (i) => i.intencion_predicha === "ESTADO_PEDIDO",
-      ).length,
-      SPAM: historial.filter((i) => i.intencion_predicha === "SPAM").length,
-    };
-  }, [historial]);
+  const handleAbrirVinculacion = async () => {
+    setMostrarModalWA(true);
+    setCodigoVinculacion(null);
+    if (waStatus.status !== "CONNECTED" && !waStatus.qr_data_url) {
+      setCargandoQR(true);
+      const st = await generarQRWhatsApp();
+      setWaStatus(st);
+      setCargandoQR(false);
+    }
+  };
+
+  const handleRefrescarQR = async () => {
+    setCargandoQR(true);
+    setCodigoVinculacion(null);
+    const st = await generarQRWhatsApp();
+    setWaStatus(st);
+    setCargandoQR(false);
+  };
+
+  const handleGenerarCodigo8Digitos = async () => {
+    setCargandoQR(true);
+    const res = await solicitarCodigoVinculacion(telefonoVinculacion);
+    if (res.pairing_code) {
+      setCodigoVinculacion(res.pairing_code);
+    }
+    setCargandoQR(false);
+  };
+
+  const handleDesvincular = async () => {
+    setCargandoQR(true);
+    const st = await desvincularWhatsApp();
+    setWaStatus(st);
+    setCodigoVinculacion(null);
+    setCargandoQR(false);
+  };
+
+  const totalCotizaciones = historial.filter(
+    (h) => h.intencion_predicha === "COTIZACION",
+  ).length;
+  const totalTecnicas = historial.filter(
+    (h) => h.intencion_predicha === "CONSULTA_TECNICA",
+  ).length;
+  const totalPedidos = historial.filter(
+    (h) => h.intencion_predicha === "ESTADO_PEDIDO",
+  ).length;
+  const totalNoDeseado = historial.filter(
+    (h) => h.intencion_predicha === "SPAM",
+  ).length;
+
+  const historialFiltrado =
+    filtroCategoria === "TODAS"
+      ? historial
+      : historial.filter((h) => h.intencion_predicha === filtroCategoria);
+
+  const badgeActual = COLOR_INTENCION[seleccionado.intencion_predicha];
+  const estaConectadoWA = waStatus.status === "CONNECTED";
 
   return (
-    <>
+    <div className="min-h-screen flex flex-col bg-slate-50">
       <Navbar />
-      <main className="px-4 py-6 sm:px-6 max-w-5xl mx-auto">
-        <section className="bg-white/95 border border-gray-200 rounded-xl p-5 shadow-sm">
-          {/* Cabecera */}
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between pb-4 border-b border-gray-200">
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => navigate("/admin-profile")}
-                className="px-3.5 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer"
+
+      <main className="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 py-8">
+        {/* Encabezado limpio y ejecutivo */}
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                Atención Automática Activa
+              </span>
+              <span
+                className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
+                  estaConectadoWA
+                    ? "bg-green-50 text-green-700 border-green-200"
+                    : "bg-amber-50 text-amber-700 border-amber-200"
+                }`}
               >
-                Regresar
-              </button>
+                WhatsApp +51 932 544 926:{" "}
+                {estaConectadoWA
+                  ? "Conectado (Respondiendo en vivo)"
+                  : "Listo para vincular"}
+              </span>
+            </div>
+            <h1 className="text-2xl font-bold text-slate-900">
+              Bandeja de Atención Inteligente — WhatsApp
+            </h1>
+            <p className="text-sm text-slate-600 mt-1">
+              Todas las consultas enviadas por los clientes al WhatsApp{" "}
+              <strong className="text-slate-800">+51 932 544 926</strong> son
+              respondidas automáticamente por el asistente y quedan registradas
+              aquí en tiempo real.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <button
+              onClick={handleAbrirVinculacion}
+              className={`px-3.5 py-2 rounded-lg text-xs font-semibold border transition flex items-center gap-1.5 ${
+                estaConectadoWA
+                  ? "bg-green-600 text-white border-green-600 hover:bg-green-700"
+                  : "bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700"
+              }`}
+            >
+              <span>
+                {estaConectadoWA
+                  ? "WhatsApp Vinculado (+51 932 544 926)"
+                  : "Vincular WhatsApp (+51 932 544 926)"}
+              </span>
+            </button>
+            <button
+              onClick={() => recargarBandeja(false)}
+              disabled={cargandoHistorial}
+              className="px-3.5 py-2 rounded-lg text-xs font-semibold border bg-white text-slate-700 border-slate-200 hover:bg-slate-100 transition"
+            >
+              {cargandoHistorial ? "Actualizando..." : "Actualizar bandeja"}
+            </button>
+            <button
+              onClick={() => setMostrarMetricas(!mostrarMetricas)}
+              className={`px-3.5 py-2 rounded-lg text-xs font-semibold border transition ${
+                mostrarMetricas
+                  ? "bg-slate-900 text-white border-slate-900"
+                  : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
+              }`}
+            >
+              {mostrarMetricas
+                ? "Ocultar rendimiento"
+                : "Rendimiento del modelo"}
+            </button>
+            <button
+              onClick={() => navigate("/admin-profile")}
+              className="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-xs transition"
+            >
+              ← Panel Admin
+            </button>
+          </div>
+        </div>
+
+        {/* Modal / Panel de Vinculación de WhatsApp Real (+51 932 544 926) */}
+        {mostrarModalWA && (
+          <div className="bg-white rounded-xl shadow-sm border-2 border-emerald-500 p-6 mb-6">
+            <div className="flex items-start justify-between gap-4 mb-4">
               <div>
-                <h1 className="text-xl sm:text-2xl font-semibold text-gray-900">
-                  Bandeja de Atención Inteligente
-                </h1>
-                <p className="text-sm text-gray-500">
-                  Registro de consultas recibidas por el asistente de WhatsApp y respuestas automáticas enviadas.
+                <h2 className="text-base font-bold text-slate-900">
+                  Conexión de Robot de WhatsApp Real (+51 932 544 926)
+                </h2>
+                <p className="text-xs text-slate-600 mt-0.5">
+                  Vincula tu segundo número (<strong>932 544 926</strong>) de
+                  forma 100 % gratuita para que responda automáticamente en
+                  WhatsApp a cualquier cliente y registre cada conversación en
+                  esta bandeja.
                 </p>
               </div>
+              <button
+                onClick={() => setMostrarModalWA(false)}
+                className="text-xs font-semibold text-slate-500 hover:text-slate-800 px-2.5 py-1 rounded border border-slate-200"
+              >
+                Cerrar ✕
+              </button>
             </div>
 
-            <div className="flex items-center gap-2 self-start sm:self-auto">
-              <button
-                type="button"
-                onClick={() => void cargarBandeja()}
-                disabled={cargandoHistorial}
-                className="px-3 py-1.5 border border-gray-300 rounded-lg text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer"
-              >
-                {cargandoHistorial ? "Actualizando..." : "↻ Actualizar bandeja"}
-              </button>
-
-              <div className="inline-flex rounded-lg border border-gray-200 bg-gray-100 p-1">
-                <button
-                  type="button"
-                  onClick={() => setVistaActiva("bandeja")}
-                  className={`px-3 py-1 text-xs sm:text-sm font-medium rounded-md transition-colors cursor-pointer ${
-                    vistaActiva === "bandeja"
-                      ? "bg-white text-gray-900 shadow-xs"
-                      : "text-gray-600 hover:text-gray-900"
-                  }`}
-                >
-                  Consultas
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setVistaActiva("estadisticas")}
-                  className={`px-3 py-1 text-xs sm:text-sm font-medium rounded-md transition-colors cursor-pointer ${
-                    vistaActiva === "estadisticas"
-                      ? "bg-white text-gray-900 shadow-xs"
-                      : "text-gray-600 hover:text-gray-900"
-                  }`}
-                >
-                  Rendimiento
-                </button>
+            {estaConectadoWA ? (
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-5 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="w-3 h-3 rounded-full bg-emerald-500 animate-ping" />
+                    <span className="text-sm font-bold text-emerald-900">
+                      ¡Robot de WhatsApp Activo y Conectado! (+
+                      {waStatus.connected_phone || "51932544926"})
+                    </span>
+                  </div>
+                  <p className="text-xs text-emerald-800 mt-1.5">
+                    Cualquier persona que escriba al{" "}
+                    <strong>+51 932 544 926</strong> en WhatsApp recibirá
+                    respuesta automática con precios y stock reales, y su
+                    consulta aparecerá inmediatamente aquí abajo.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <a
+                    href="https://wa.me/51932544926?text=Hola%2C%20tienes%20cilindro%20para%20Torito%20Bajaj%204T%20y%20a%20cu%C3%A1nto%20sale%3F"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition"
+                  >
+                    Probar en WhatsApp →
+                  </a>
+                  <button
+                    onClick={handleDesvincular}
+                    disabled={cargandoQR}
+                    className="px-3 py-2 rounded-lg bg-white hover:bg-red-50 text-red-600 border border-red-200 text-xs font-semibold transition"
+                  >
+                    Desvincular
+                  </button>
+                </div>
               </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
+                {/* Columna 1: Código QR */}
+                <div className="flex flex-col items-center justify-center bg-slate-50 border border-slate-200 rounded-xl p-5">
+                  {waStatus.qr_data_url ? (
+                    <img
+                      src={waStatus.qr_data_url}
+                      alt="Código QR de WhatsApp"
+                      className="w-56 h-56 rounded-lg border border-slate-200 bg-white p-2 shadow-sm"
+                    />
+                  ) : (
+                    <div className="w-56 h-56 rounded-lg border border-dashed border-slate-300 bg-white flex flex-col items-center justify-center p-4 text-center">
+                      <p className="text-xs text-slate-500 mb-3">
+                        {cargandoQR
+                          ? "Generando código QR de vinculación..."
+                          : "Haz clic abajo para mostrar el código QR"}
+                      </p>
+                      <button
+                        onClick={handleRefrescarQR}
+                        disabled={cargandoQR}
+                        className="px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition"
+                      >
+                        {cargandoQR ? "Generando..." : "Generar Código QR"}
+                      </button>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2 mt-3">
+                    <button
+                      onClick={handleRefrescarQR}
+                      disabled={cargandoQR}
+                      className="text-xs font-semibold text-emerald-700 hover:underline"
+                    >
+                      {cargandoQR ? "Actualizando..." : "↻ Actualizar QR"}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Columna 2: Instrucciones paso a paso + opción de código de 8 dígitos */}
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 mb-2">
+                      Pasos para activar el robot en tu número 932 544 926:
+                    </h3>
+                    <ol className="text-xs text-slate-700 space-y-2 list-decimal list-inside">
+                      <li>
+                        Abre <strong>WhatsApp</strong> o{" "}
+                        <strong>WhatsApp Business</strong> en el celular donde
+                        tienes el número <strong>932 544 926</strong>.
+                      </li>
+                      <li>
+                        Toca el menú <strong>⋮ (tres puntos)</strong> o{" "}
+                        <strong>Configuración</strong> y entra a{" "}
+                        <strong>Dispositivos vinculados</strong>.
+                      </li>
+                      <li>
+                        Toca en <strong>Vincular un dispositivo</strong> y
+                        escanea el código QR de la izquierda.
+                      </li>
+                      <li>
+                        ¡Listo! Apenas conecte, cualquier mensaje enviado al{" "}
+                        <strong>932 544 926</strong> será respondido
+                        automáticamente por el robot y se guardará aquí.
+                      </li>
+                    </ol>
+                  </div>
+
+                  <div className="pt-3 border-t border-slate-200">
+                    <p className="text-xs font-semibold text-slate-700 mb-2">
+                      ¿Prefieres vincular con código numérico de 8 dígitos en
+                      lugar de QR?
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={telefonoVinculacion}
+                        onChange={(e) => setTelefonoVinculacion(e.target.value)}
+                        placeholder="932544926"
+                        className="px-3 py-1.5 text-xs border border-slate-300 rounded-lg w-36"
+                      />
+                      <button
+                        onClick={handleGenerarCodigo8Digitos}
+                        disabled={cargandoQR}
+                        className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold transition"
+                      >
+                        Obtener código
+                      </button>
+                    </div>
+                    {codigoVinculacion && (
+                      <div className="mt-2.5 p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                        <span className="text-xs text-emerald-800 block">
+                          Ingresa este código en tu WhatsApp (Vincular con el
+                          número de teléfono):
+                        </span>
+                        <span className="text-lg font-mono font-bold tracking-widest text-emerald-950">
+                          {codigoVinculacion}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Tarjetas de filtro rápido por categoría */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          <button
+            type="button"
+            onClick={() =>
+              setFiltroCategoria(
+                filtroCategoria === "COTIZACION" ? "TODAS" : "COTIZACION",
+              )
+            }
+            className={`text-left bg-white rounded-xl p-4 border transition shadow-sm ${
+              filtroCategoria === "COTIZACION"
+                ? "border-blue-500 ring-2 ring-blue-100"
+                : "border-slate-200 hover:border-blue-300"
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-500 uppercase">
+                Cotizaciones
+              </span>
+              <span className="w-2.5 h-2.5 rounded-full bg-blue-600" />
+            </div>
+            <p className="text-2xl font-bold text-slate-900 mt-2">
+              {totalCotizaciones}
+            </p>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Consultas de precio y stock
+            </p>
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              setFiltroCategoria(
+                filtroCategoria === "CONSULTA_TECNICA"
+                  ? "TODAS"
+                  : "CONSULTA_TECNICA",
+              )
+            }
+            className={`text-left bg-white rounded-xl p-4 border transition shadow-sm ${
+              filtroCategoria === "CONSULTA_TECNICA"
+                ? "border-emerald-500 ring-2 ring-emerald-100"
+                : "border-slate-200 hover:border-emerald-300"
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-500 uppercase">
+                Consultas técnicas
+              </span>
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+            </div>
+            <p className="text-2xl font-bold text-slate-900 mt-2">
+              {totalTecnicas}
+            </p>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Compatibilidad y medidas
+            </p>
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              setFiltroCategoria(
+                filtroCategoria === "ESTADO_PEDIDO" ? "TODAS" : "ESTADO_PEDIDO",
+              )
+            }
+            className={`text-left bg-white rounded-xl p-4 border transition shadow-sm ${
+              filtroCategoria === "ESTADO_PEDIDO"
+                ? "border-amber-500 ring-2 ring-amber-100"
+                : "border-slate-200 hover:border-amber-300"
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-500 uppercase">
+                Estado de pedido
+              </span>
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+            </div>
+            <p className="text-2xl font-bold text-slate-900 mt-2">
+              {totalPedidos}
+            </p>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Pagos, recojo y despachos
+            </p>
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              setFiltroCategoria(filtroCategoria === "SPAM" ? "TODAS" : "SPAM")
+            }
+            className={`text-left bg-white rounded-xl p-4 border transition shadow-sm ${
+              filtroCategoria === "SPAM"
+                ? "border-red-500 ring-2 ring-red-100"
+                : "border-slate-200 hover:border-red-300"
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-500 uppercase">
+                No deseado
+              </span>
+              <span className="w-2.5 h-2.5 rounded-full bg-red-500" />
+            </div>
+            <p className="text-2xl font-bold text-slate-900 mt-2">
+              {totalNoDeseado}
+            </p>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Publicidad filtrada
+            </p>
+          </button>
+        </div>
+
+        {/* Tabla desplegable de rendimiento del modelo */}
+        {mostrarMetricas && (
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+              <div>
+                <h2 className="text-base font-bold text-slate-900">
+                  Comparativa de Modelos de Clasificación Entrenados
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Evaluación sobre 520 conversaciones etiquetadas (80%
+                  entrenamiento / 20% prueba estratificada).
+                </p>
+              </div>
+              <span className="text-xs font-semibold px-3 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                Modelo activo: SVM Lineal (94.23% Exactitud)
+              </span>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-200 text-slate-500 text-xs uppercase">
+                    <th className="py-2.5 px-3">Algoritmo</th>
+                    <th className="py-2.5 px-3 text-center">
+                      Validación Cruzada
+                    </th>
+                    <th className="py-2.5 px-3 text-center">Exactitud</th>
+                    <th className="py-2.5 px-3 text-center">Precisión</th>
+                    <th className="py-2.5 px-3 text-center">Sensibilidad</th>
+                    <th className="py-2.5 px-3 text-center">Puntaje F1</th>
+                    <th className="py-2.5 px-3 text-center">Estado</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {MODELOS_COMPARADOS.map((m) => (
+                    <tr
+                      key={m.nombre}
+                      className={m.ganador ? "bg-blue-50/50 font-semibold" : ""}
+                    >
+                      <td className="py-2.5 px-3 text-slate-800">{m.nombre}</td>
+                      <td className="py-2.5 px-3 text-center text-slate-600">
+                        {(m.cv_f1 * 100).toFixed(2)}%
+                      </td>
+                      <td className="py-2.5 px-3 text-center text-slate-700">
+                        {(m.test_accuracy * 100).toFixed(2)}%
+                      </td>
+                      <td className="py-2.5 px-3 text-center text-slate-700">
+                        {(m.test_precision * 100).toFixed(2)}%
+                      </td>
+                      <td className="py-2.5 px-3 text-center text-slate-700">
+                        {(m.test_recall * 100).toFixed(2)}%
+                      </td>
+                      <td className="py-2.5 px-3 text-center font-bold text-blue-700">
+                        {(m.test_f1 * 100).toFixed(2)}%
+                      </td>
+                      <td className="py-2.5 px-3 text-center">
+                        {m.ganador ? (
+                          <span className="px-2 py-0.5 text-xs rounded-full bg-emerald-100 text-emerald-800 font-semibold">
+                            En producción
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 text-xs rounded-full bg-slate-100 text-slate-600">
+                            Evaluado
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Panel principal: Lista de conversaciones de WhatsApp (Izquierda) + Detalle (Derecha) */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* Columna izquierda: Bandeja de Consultas Recibidas */}
+          <div className="lg:col-span-5 bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col overflow-hidden">
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h2 className="text-sm font-bold text-slate-900">
+                  Conversaciones de Clientes ({historialFiltrado.length})
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Mensajes recibidos y respondidos en WhatsApp (+51 932 544 926)
+                </p>
+              </div>
+              {filtroCategoria !== "TODAS" && (
+                <button
+                  type="button"
+                  onClick={() => setFiltroCategoria("TODAS")}
+                  className="text-xs text-blue-600 hover:underline font-medium"
+                >
+                  Ver todas
+                </button>
+              )}
+            </div>
+
+            <div className="divide-y divide-slate-100 max-h-[540px] overflow-y-auto">
+              {historialFiltrado.map((item) => {
+                const info = COLOR_INTENCION[item.intencion_predicha];
+                const activo =
+                  seleccionado.id_conversacion === item.id_conversacion;
+                return (
+                  <button
+                    key={item.id_conversacion}
+                    type="button"
+                    onClick={() => setSeleccionado(item)}
+                    className={`w-full text-left p-4 transition flex flex-col gap-1.5 ${
+                      activo ? "bg-blue-50/60" : "hover:bg-slate-50"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span
+                        className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold"
+                        style={{
+                          backgroundColor: info.bg,
+                          color: info.text,
+                          border: `1px solid ${info.border}`,
+                        }}
+                      >
+                        <span
+                          className="w-1.5 h-1.5 rounded-full"
+                          style={{ backgroundColor: info.dot }}
+                        />
+                        {info.label}
+                      </span>
+                      <span className="text-[11px] text-slate-400">
+                        {item.timestamp_primer_mensaje ||
+                          `${String(item.hora_del_dia).padStart(2, "0")}:00 h`}{" "}
+                        · {(item.confianza_modelo * 100).toFixed(0)}% certeza
+                      </span>
+                    </div>
+
+                    <p className="text-xs text-slate-800 line-clamp-2 font-medium">
+                      "{item.texto_cliente}"
+                    </p>
+
+                    <div className="flex items-center justify-between text-[11px] text-slate-500">
+                      <span>
+                        {item.remitente_whatsapp
+                          ? `WhatsApp: ${item.remitente_whatsapp}`
+                          : "Respuesta automática enviada"}
+                      </span>
+                      {item.es_fuera_horario && (
+                        <span className="text-amber-700 font-medium">
+                          Horario nocturno
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
-          {vistaActiva === "bandeja" ? (
-            <div className="mt-5 space-y-4">
-              {/* Aviso instructivo sutil */}
-              <div className="bg-emerald-50/70 border border-emerald-200 rounded-lg px-4 py-2.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs text-emerald-900">
-                <span>
-                  💬 Todas las consultas que los clientes envían desde el <strong>botón flotante de WhatsApp</strong> (esquina inferior derecha) son respondidas automáticamente y quedan registradas en esta bandeja.
-                </span>
-              </div>
-
-              {/* Filtros por categoría */}
-              <div className="flex flex-wrap items-center gap-2">
-                {(
-                  [
-                    ["TODAS", "Todas"],
-                    ["COTIZACION", "Cotizaciones"],
-                    ["CONSULTA_TECNICA", "Consultas técnicas"],
-                    ["ESTADO_PEDIDO", "Estado de pedido"],
-                    ["SPAM", "No deseado"],
-                  ] as const
-                ).map(([key, label]) => {
-                  const activo = filtroCategoria === key;
-                  return (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => setFiltroCategoria(key)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors cursor-pointer flex items-center gap-1.5 ${
-                        activo
-                          ? "bg-[var(--Primary_5)] text-white border-[var(--Primary_5)]"
-                          : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
-                      }`}
+          {/* Columna derecha: Detalle de la conversación seleccionada */}
+          <div className="lg:col-span-7 bg-white rounded-xl shadow-sm border border-slate-200 p-6 flex flex-col justify-between">
+            <div>
+              <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-100">
+                <div>
+                  <span className="text-xs text-slate-400 uppercase font-semibold tracking-wider">
+                    Detalle de Atención Automatizada
+                  </span>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span
+                      className="px-3 py-1 rounded-full text-xs font-bold"
+                      style={{
+                        backgroundColor: badgeActual.bg,
+                        color: badgeActual.text,
+                        border: `1px solid ${badgeActual.border}`,
+                      }}
                     >
-                      <span>{label}</span>
-                      <span
-                        className={`px-1.5 py-0.2 rounded-full text-[11px] ${
-                          activo
-                            ? "bg-white/20 text-white"
-                            : "bg-gray-100 text-gray-600"
-                        }`}
-                      >
-                        {conteos[key]}
+                      {badgeActual.label}
+                    </span>
+                    <span className="text-xs font-semibold text-slate-600">
+                      {(seleccionado.confianza_modelo * 100).toFixed(1)}% de
+                      confianza
+                    </span>
+                    {seleccionado.es_fuera_horario && (
+                      <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-800 border border-amber-200">
+                        Atendido fuera de horario
                       </span>
-                    </button>
-                  );
-                })}
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  {seleccionado.requiere_derivacion_humana ? (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+                      Requiere revisión de asesor
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      Respondido automáticamente en WhatsApp
+                    </span>
+                  )}
+                </div>
               </div>
 
-              {/* Vista Maestro-Detalle */}
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-                {/* Lista de consultas recibidas (Izquierda) */}
-                <div className="lg:col-span-5 border border-gray-200 rounded-xl overflow-hidden bg-white">
-                  <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-                    <span className="text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                      Historial de mensajes
-                    </span>
-                    <span className="text-xs text-gray-500">
-                      {historialFiltrado.length} consulta
-                      {historialFiltrado.length === 1 ? "" : "s"}
+              {/* Mensaje del cliente y respuesta automática del bot */}
+              <div className="my-5 space-y-3">
+                <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-xs font-semibold text-slate-500">
+                      Mensaje recibido del cliente en WhatsApp:
+                    </p>
+                    <span className="text-[11px] text-slate-400">
+                      {seleccionado.timestamp_primer_mensaje || ""}
                     </span>
                   </div>
-                  <div className="divide-y divide-gray-100 max-h-[460px] overflow-y-auto">
-                    {historialFiltrado.map((item) => {
-                      const meta =
-                        META_INTENCION[item.intencion_predicha] ||
-                        META_INTENCION.COTIZACION;
-                      const esActiva =
-                        consultaActiva?.id_conversacion === item.id_conversacion;
+                  <p className="text-sm text-slate-900 font-medium">
+                    "{seleccionado.texto_cliente}"
+                  </p>
+                </div>
 
-                      return (
-                        <button
-                          key={item.id_conversacion}
-                          type="button"
-                          onClick={() => setSeleccionadaId(item.id_conversacion)}
-                          className={`w-full text-left p-3.5 transition-colors cursor-pointer block ${
-                            esActiva
-                              ? "bg-blue-50/60 border-l-4 border-[var(--Primary_5)]"
-                              : "hover:bg-gray-50"
-                          }`}
-                        >
-                          <div className="flex items-center justify-between gap-2 mb-1.5">
-                            <span
-                              className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium border ${meta.badge}`}
-                            >
-                              <span
-                                className={`w-1.5 h-1.5 rounded-full ${meta.dot}`}
-                              />
-                              {meta.nombre}
-                            </span>
-                            <span className="text-[11px] text-gray-500">
-                              {item.timestamp_primer_mensaje ||
-                                `${String(item.hora_del_dia).padStart(2, "0")}:00 hrs`}
-                            </span>
-                          </div>
-                          <p className="text-sm text-gray-800 line-clamp-2">
-                            {item.texto_cliente}
+                {seleccionado.respuesta_automatica_bot && (
+                  <div className="bg-emerald-50/70 rounded-xl p-4 border border-emerald-200">
+                    <p className="text-xs font-semibold text-emerald-800 mb-1">
+                      Respuesta automática enviada por el Robot (+51 932 544
+                      926):
+                    </p>
+                    <p className="text-xs text-slate-800 whitespace-pre-line leading-relaxed">
+                      {seleccionado.respuesta_automatica_bot}
+                    </p>
+                  </div>
+                )}
+
+                <div className="bg-blue-50/60 rounded-xl p-3.5 border border-blue-100">
+                  <p className="text-xs font-semibold text-blue-900 mb-0.5">
+                    Acción operativa registrada:
+                  </p>
+                  <p className="text-xs text-blue-800 leading-relaxed">
+                    {seleccionado.accion_negocio_sugerida}
+                  </p>
+                </div>
+              </div>
+
+              {/* Barras de probabilidad por categoría */}
+              <div className="mb-6">
+                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">
+                  Nivel de coincidencia por categoría
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {(
+                    [
+                      "COTIZACION",
+                      "CONSULTA_TECNICA",
+                      "ESTADO_PEDIDO",
+                      "SPAM",
+                    ] as TipoIntencion[]
+                  ).map((clase) => {
+                    const prob = seleccionado.probabilidades?.[clase] || 0;
+                    const pct = (prob * 100).toFixed(1);
+                    const info = COLOR_INTENCION[clase];
+                    return (
+                      <div
+                        key={clase}
+                        className="p-3 rounded-lg border border-slate-100 bg-slate-50/60"
+                      >
+                        <div className="flex justify-between text-xs font-semibold mb-1.5">
+                          <span className="text-slate-700">{info.label}</span>
+                          <span style={{ color: info.text }}>{pct}%</span>
+                        </div>
+                        <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full transition-all duration-300"
+                            style={{
+                              width: `${Math.max(Number(pct), 2)}%`,
+                              backgroundColor: info.dot,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Repuestos sugeridos del inventario */}
+              <div>
+                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2.5">
+                  Repuestos vinculados en inventario
+                </h3>
+                {seleccionado.productos_sugeridos_supabase &&
+                seleccionado.productos_sugeridos_supabase.length > 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {seleccionado.productos_sugeridos_supabase.map((prod) => (
+                      <div
+                        key={prod.id}
+                        className="p-3 rounded-lg border border-slate-200 bg-white flex items-center justify-between gap-2"
+                      >
+                        <div>
+                          <p className="text-xs font-bold text-slate-800">
+                            {prod.nombre}
                           </p>
-                          <div className="mt-2 flex items-center justify-between text-xs text-gray-500">
-                            <span>
-                              Certeza:{" "}
-                              <strong className="text-gray-700">
-                                {(item.confianza_modelo * 100).toFixed(1)}%
-                              </strong>
-                            </span>
-                            {item.es_fuera_horario && (
-                              <span className="text-amber-700 font-medium">
-                                Horario nocturno
-                              </span>
-                            )}
-                          </div>
-                        </button>
-                      );
-                    })}
+                          <p className="text-[11px] text-slate-500">
+                            {prod.categoria} · Stock: {prod.stock_disponible}{" "}
+                            und.
+                          </p>
+                        </div>
+                        <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200 whitespace-nowrap">
+                          S/ {Number(prod.precio_soles).toFixed(2)}
+                        </span>
+                      </div>
+                    ))}
                   </div>
-                </div>
-
-                {/* Detalle de la conversación seleccionada (Derecha) */}
-                <div className="lg:col-span-7 border border-gray-200 rounded-xl p-5 bg-white flex flex-col justify-between">
-                  {consultaActiva ? (
-                    <div className="space-y-4">
-                      <div className="flex flex-wrap items-start justify-between gap-3 pb-3 border-b border-gray-100">
-                        <div>
-                          <span className="text-xs text-gray-500 block mb-1">
-                            Categoría asignada automáticamente
-                          </span>
-                          <span
-                            className={`inline-flex items-center gap-2 px-3 py-1 rounded-md text-sm font-semibold border ${
-                              META_INTENCION[consultaActiva.intencion_predicha]
-                                ?.badge
-                            }`}
-                          >
-                            <span
-                              className={`w-2 h-2 rounded-full ${
-                                META_INTENCION[consultaActiva.intencion_predicha]
-                                  ?.dot
-                              }`}
-                            />
-                            {
-                              META_INTENCION[consultaActiva.intencion_predicha]
-                                ?.nombre
-                            }
-                          </span>
-                        </div>
-
-                        <div className="flex items-center gap-6">
-                          <div>
-                            <span className="text-xs text-gray-500 block">
-                              Recepción
-                            </span>
-                            <span className="text-sm font-medium text-gray-800">
-                              {String(consultaActiva.hora_del_dia).padStart(
-                                2,
-                                "0",
-                              )}
-                              :00 hrs{" "}
-                              {consultaActiva.es_fuera_horario
-                                ? "(Nocturno)"
-                                : "(Comercial)"}
-                            </span>
-                          </div>
-                          <div className="text-right">
-                            <span className="text-xs text-gray-500 block">
-                              Certeza
-                            </span>
-                            <span className="text-xl font-bold text-[var(--Primary_5)]">
-                              {(consultaActiva.confianza_modelo * 100).toFixed(
-                                1,
-                              )}
-                              %
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Conversación registrada (Mensaje Cliente + Respuesta Bot) */}
-                      <div className="space-y-2.5 bg-[#ECE5DD]/60 p-3.5 rounded-xl border border-gray-200">
-                        <div>
-                          <span className="text-[11px] font-semibold text-gray-600 block mb-1">
-                            Cliente escribió:
-                          </span>
-                          <div className="bg-white border border-gray-200 rounded-lg p-3 text-sm text-gray-900 shadow-2xs">
-                            {consultaActiva.texto_cliente}
-                          </div>
-                        </div>
-
-                        {consultaActiva.respuesta_automatica_bot && (
-                          <div>
-                            <span className="text-[11px] font-semibold text-emerald-800 block mb-1">
-                              Respuesta automática enviada por Hurios Rally:
-                            </span>
-                            <div className="bg-[#DCF8C6] border border-emerald-200 rounded-lg p-3 text-xs sm:text-sm text-gray-900 whitespace-pre-line shadow-2xs">
-                              {consultaActiva.respuesta_automatica_bot}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Acción interna sugerida */}
-                      <div className="p-3 bg-blue-50/50 border border-blue-200 rounded-lg">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-semibold text-blue-900">
-                            Seguimiento interno sugerido
-                          </span>
-                          {consultaActiva.requiere_derivacion_humana && (
-                            <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded text-[11px] font-semibold">
-                              Requiere revisión de asesor
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs sm:text-sm text-gray-800">
-                          {consultaActiva.accion_negocio_sugerida}
-                        </p>
-                      </div>
-
-                      {/* Repuestos vinculados del inventario */}
-                      {consultaActiva.productos_sugeridos_supabase &&
-                        consultaActiva.productos_sugeridos_supabase.length >
-                          0 && (
-                          <div>
-                            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                              Repuestos cotizados del inventario
-                            </h3>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                              {consultaActiva.productos_sugeridos_supabase.map(
-                                (prod) => (
-                                  <div
-                                    key={prod.id}
-                                    className="p-2.5 border border-gray-200 rounded-lg flex items-center justify-between bg-white"
-                                  >
-                                    <div>
-                                      <p className="text-xs sm:text-sm font-medium text-gray-900 line-clamp-1">
-                                        {prod.nombre}
-                                      </p>
-                                      <p className="text-[11px] text-gray-500">
-                                        {prod.categoria} • Stock:{" "}
-                                        {prod.stock_disponible} und.
-                                      </p>
-                                    </div>
-                                    <span className="text-xs sm:text-sm font-bold text-[var(--Primary_5)] ml-3 shrink-0">
-                                      S/ {Number(prod.precio_soles).toFixed(2)}
-                                    </span>
-                                  </div>
-                                ),
-                              )}
-                            </div>
-                          </div>
-                        )}
-
-                      {/* Barras de afinidad */}
-                      <div className="pt-2 border-t border-gray-100">
-                        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                          Probabilidad por categoría
-                        </h3>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
-                          {(
-                            [
-                              "COTIZACION",
-                              "CONSULTA_TECNICA",
-                              "ESTADO_PEDIDO",
-                              "SPAM",
-                            ] as TipoIntencion[]
-                          ).map((cat) => {
-                            const valor =
-                              consultaActiva.probabilidades[cat] ?? 0;
-                            return (
-                              <div key={cat} className="text-xs">
-                                <div className="flex justify-between text-gray-700 mb-1">
-                                  <span>{META_INTENCION[cat].nombre}</span>
-                                  <span className="font-semibold">
-                                    {(valor * 100).toFixed(1)}%
-                                  </span>
-                                </div>
-                                <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                                  <div
-                                    className="h-full bg-[var(--Primary_5)] rounded-full transition-all"
-                                    style={{
-                                      width: `${Math.max(valor * 100, 2)}%`,
-                                    }}
-                                  />
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
+                ) : (
+                  <p className="text-xs text-slate-500 italic bg-slate-50 p-3 rounded-lg border border-slate-100">
+                    Esta consulta no requiere cotizar un repuesto específico del
+                    catálogo.
+                  </p>
+                )}
               </div>
             </div>
-          ) : (
-            /* Vista Secundaria: Estadísticas del Clasificador */
-            <div className="mt-5 space-y-6">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl">
-                  <span className="text-xs text-gray-500">
-                    Exactitud general
-                  </span>
-                  <p className="text-2xl font-bold text-gray-900 mt-1">
-                    94.23%
-                  </p>
-                  <span className="text-xs text-gray-500">
-                    Puntaje F1: 0.9393
-                  </span>
-                </div>
-                <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl">
-                  <span className="text-xs text-gray-500">
-                    Demanda en horario nocturno
-                  </span>
-                  <p className="text-2xl font-bold text-gray-900 mt-1">
-                    43.27%
-                  </p>
-                  <span className="text-xs text-gray-500">
-                    Entre 18:00 y 08:00 hrs
-                  </span>
-                </div>
-                <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl">
-                  <span className="text-xs text-gray-500">
-                    Filtro de mensajes no deseados
-                  </span>
-                  <p className="text-2xl font-bold text-gray-900 mt-1">
-                    100.0%
-                  </p>
-                  <span className="text-xs text-gray-500">
-                    Sin bloqueo de clientes reales
-                  </span>
-                </div>
-                <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl">
-                  <span className="text-xs text-gray-500">
-                    Base de entrenamiento
-                  </span>
-                  <p className="text-2xl font-bold text-gray-900 mt-1">
-                    520 consultas
-                  </p>
-                  <span className="text-xs text-gray-500">
-                    4 categorías operativas
-                  </span>
-                </div>
-              </div>
-
-              <div className="border border-gray-200 rounded-xl overflow-hidden">
-                <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
-                  <h2 className="text-sm font-semibold text-gray-800">
-                    Comparativa de algoritmos evaluados
-                  </h2>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse text-sm">
-                    <thead>
-                      <tr className="border-b border-gray-200 text-gray-600 bg-white">
-                        <th className="py-3 px-4 font-medium">Modelo</th>
-                        <th className="py-3 px-4 text-center font-medium">
-                          Validación Cruzada
-                        </th>
-                        <th className="py-3 px-4 text-center font-medium">
-                          Exactitud
-                        </th>
-                        <th className="py-3 px-4 text-center font-medium">
-                          Precisión
-                        </th>
-                        <th className="py-3 px-4 text-center font-medium">
-                          Sensibilidad
-                        </th>
-                        <th className="py-3 px-4 text-center font-medium">
-                          Puntaje F1
-                        </th>
-                        <th className="py-3 px-4 text-center font-medium">
-                          Estado
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {MODELOS_COMPARADOS.map((m, idx) => (
-                        <tr
-                          key={idx}
-                          className={
-                            m.ganador ? "bg-blue-50/40 font-medium" : "bg-white"
-                          }
-                        >
-                          <td className="py-3 px-4 text-gray-900">
-                            {m.nombre}
-                          </td>
-                          <td className="py-3 px-4 text-center text-gray-700">
-                            {(m.cv_f1 * 100).toFixed(2)}%
-                          </td>
-                          <td className="py-3 px-4 text-center text-gray-700">
-                            {(m.test_accuracy * 100).toFixed(2)}%
-                          </td>
-                          <td className="py-3 px-4 text-center text-gray-700">
-                            {(m.test_precision * 100).toFixed(2)}%
-                          </td>
-                          <td className="py-3 px-4 text-center text-gray-700">
-                            {(m.test_recall * 100).toFixed(2)}%
-                          </td>
-                          <td className="py-3 px-4 text-center font-semibold text-[var(--Primary_5)]">
-                            {(m.test_f1 * 100).toFixed(2)}%
-                          </td>
-                          <td className="py-3 px-4 text-center">
-                            {m.ganador ? (
-                              <span className="px-2.5 py-0.5 bg-green-100 text-green-800 text-xs font-medium rounded-md">
-                                En uso
-                              </span>
-                            ) : (
-                              <span className="text-xs text-gray-500">
-                                Evaluado
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          )}
-        </section>
+          </div>
+        </div>
       </main>
-    </>
+
+      <Footer />
+    </div>
   );
-}
+};
 
 export default ClasificadorML;

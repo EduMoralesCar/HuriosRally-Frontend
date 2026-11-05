@@ -1,25 +1,28 @@
 // src/config/whatsapp.ts
 
 export const WHATSAPP_CONFIG = {
-  // Formato internacional SIN "+", SIN espacios, SIN guiones
-  // Perú: 51 + 9 dígitos (añade 51 automáticamente si son 9 dígitos)
+  // Número oficial de atención automatizada de Hurios Rally (+51 932 544 926)
   phoneNumber: (() => {
-    const raw = String(import.meta.env.VITE_WHATSAPP_NUMBER || "51953157200").replace(/\D/g, "");
-    return raw.length === 9 ? `51${raw}` : raw;
+    const envVal = String(import.meta.env.VITE_WHATSAPP_NUMBER || "").replace(/\D/g, "");
+    // Si en el entorno quedó el número personal anterior (953157200) o está vacío, usar el segundo número 932544926
+    if (!envVal || envVal.endsWith("953157200")) {
+      return "51932544926";
+    }
+    return envVal.length === 9 ? `51${envVal}` : envVal;
   })(),
 
   // Mensaje por defecto al abrir el chat
   defaultMessage:
-    "Hola, vengo desde la web de Hurios y quisiera más información.",
+    "Hola, vengo desde la web de Hurios Rally y quisiera consultar por un repuesto.",
 
   // Opcional: mensaje distinto según contexto
   messages: {
     product: (productName: string) =>
-      `Hola, estoy interesado en el producto: ${productName}`,
+      `Hola, estoy interesado en el repuesto: ${productName}. ¿Tienen stock y precio?`,
     support:
-      "Hola, necesito ayuda con mi pedido.",
+      "Hola, quisiera consultar el estado de mi pedido.",
     general:
-      "Hola, vengo desde la web de Hurios y quisiera más información.",
+      "Hola, vengo desde la web de Hurios Rally y quisiera consultar por un repuesto.",
   },
 };
 
@@ -33,7 +36,7 @@ export function buildWhatsAppUrl(message?: string): string {
 }
 
 /**
- * Abre WhatsApp en nueva pestaña (Web o App según el dispositivo).
+ * Abre WhatsApp real en nueva pestaña (Web o App según el dispositivo).
  */
 export function openWhatsApp(message?: string): void {
   window.open(buildWhatsAppUrl(message), "_blank", "noopener,noreferrer");
