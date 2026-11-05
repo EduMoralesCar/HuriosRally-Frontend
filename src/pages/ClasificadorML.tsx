@@ -1,8 +1,8 @@
-import React, { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "../components/layout/Navbar";
 import {
-  clasificarConsultaML,
+  obtenerHistorialConsultasML,
   MODELOS_COMPARADOS,
   type PrediccionMLResponse,
   type TipoIntencion,
@@ -37,6 +37,7 @@ const META_INTENCION: Record<
 const CONSULTAS_INICIALES: PrediccionMLResponse[] = [
   {
     id_conversacion: "c1f4-8821",
+    timestamp_primer_mensaje: "Hoy, 21:14",
     texto_cliente:
       "Hola maestro, ¿tienes planchado de cilindro para mi bajajita Torito RE 205 y a cuánto me dejas?",
     texto_normalizado:
@@ -54,6 +55,8 @@ const CONSULTAS_INICIALES: PrediccionMLResponse[] = [
     requiere_derivacion_humana: false,
     accion_negocio_sugerida:
       "Enviar cotización automática con precio actualizado, stock disponible en almacén y opciones de pago (Yape, Plin o tarjeta).",
+    respuesta_automatica_bot:
+      "¡Hola! Gracias por escribir a Hurios Rally. Tenemos disponibilidad inmediata para tu consulta:\n• Cilindro Completo Torito Bajaj 4T — S/ 185.00 (Stock: 23 und.)\n• Kit de Discos de Embrague Kevlar Bajaj Torito — S/ 42.00 (Stock: 34 und.)\nPuedes agregarlos al carrito en nuestra web con pago por Yape, Plin o tarjeta, o continuar con un asesor.",
     modelo_utilizado: "SVM Lineal",
     productos_sugeridos_supabase: [
       {
@@ -74,6 +77,7 @@ const CONSULTAS_INICIALES: PrediccionMLResponse[] = [
   },
   {
     id_conversacion: "a9d2-3410",
+    timestamp_primer_mensaje: "Hoy, 19:40",
     texto_cliente:
       "Jefe una consulta, ¿el kit de discos de embrague de la Pulsar 180 le calza a la Discover 150?",
     texto_normalizado:
@@ -91,6 +95,8 @@ const CONSULTAS_INICIALES: PrediccionMLResponse[] = [
     requiere_derivacion_humana: false,
     accion_negocio_sugerida:
       "Brindar ficha de compatibilidad técnica del repuesto y, si requiere validación mecánica específica, asignar a un asesor.",
+    respuesta_automatica_bot:
+      "¡Hola! Hemos identificado tu consulta técnica. En nuestro catálogo contamos con: Kit de Discos de Embrague Kevlar Bajaj Torito (S/ 42.00, Stock: 34 und.). El repuesto cuenta con garantía de compatibilidad estándar.",
     modelo_utilizado: "SVM Lineal",
     productos_sugeridos_supabase: [
       {
@@ -104,6 +110,7 @@ const CONSULTAS_INICIALES: PrediccionMLResponse[] = [
   },
   {
     id_conversacion: "b4e7-9102",
+    timestamp_primer_mensaje: "Hoy, 15:22",
     texto_cliente:
       "Buenas tardes, ya hice el Yape de S/ 185 por mi pedido #PED-4510, ¿a qué hora sale el envío?",
     texto_normalizado:
@@ -121,11 +128,14 @@ const CONSULTAS_INICIALES: PrediccionMLResponse[] = [
     requiere_derivacion_humana: false,
     accion_negocio_sugerida:
       "Consultar el estado actual de la compra y notificar al cliente el seguimiento de entrega o disponibilidad de recojo.",
+    respuesta_automatica_bot:
+      "¡Hola! Hemos identificado tu consulta sobre el estado de tu compra o pago. Tu solicitud ya está priorizada en el área de despacho; puedes revisar tu comprobante en 'Mis Pedidos' o indicarnos tu número de orden.",
     modelo_utilizado: "SVM Lineal",
     productos_sugeridos_supabase: [],
   },
   {
     id_conversacion: "f0c1-1189",
+    timestamp_primer_mensaje: "Ayer, 23:05",
     texto_cliente:
       "¡Gana hasta S/ 500 diarios desde tu celular sin inversión! Entra a este link bit.ly/gana-facil-2026",
     texto_normalizado:
@@ -143,35 +153,10 @@ const CONSULTAS_INICIALES: PrediccionMLResponse[] = [
     requiere_derivacion_humana: false,
     accion_negocio_sugerida:
       "Archivar automáticamente como mensaje publicitario o ajeno al giro del negocio sin generar alerta en ventas.",
+    respuesta_automatica_bot:
+      "Gracias por comunicarte con Hurios Rally. Nuestro canal está dedicado exclusivamente a la venta y asesoría de repuestos para vehículos menores.",
     modelo_utilizado: "SVM Lineal",
     productos_sugeridos_supabase: [],
-  },
-];
-
-const SUGERENCIAS_PRUEBA = [
-  {
-    titulo: "Cotización de cilindro",
-    hora: 21,
-    texto:
-      "Hola, ¿tienes cilindro completo para Torito Bajaj 4T y cuánto cuesta?",
-  },
-  {
-    titulo: "Compatibilidad de freno",
-    hora: 18,
-    texto:
-      "Buenas noches, ¿las zapatas de freno de Bajaj le hacen también a la TVS King 200?",
-  },
-  {
-    titulo: "Confirmación de pago Yape",
-    hora: 14,
-    texto:
-      "Acabo de pagar con Yape mi compra web, ¿ya está listo mi repuesto para recoger?",
-  },
-  {
-    titulo: "Publicidad no deseada",
-    hora: 22,
-    texto:
-      "Ofrecemos préstamos rápidos sin evaluar historial crediticio, escríbenos ahora.",
   },
 ];
 
@@ -188,14 +173,40 @@ export function ClasificadorML() {
   const [filtroCategoria, setFiltroCategoria] = useState<
     "TODAS" | TipoIntencion
   >("TODAS");
+  const [cargandoHistorial, setCargandoHistorial] = useState(false);
 
-  const [nuevoMensaje, setNuevoMensaje] = useState("");
-  const [horaMensaje, setHoraMensaje] = useState<number>(20);
-  const [analizando, setAnalizando] = useState(false);
+  const cargarBandeja = useCallback(async () => {
+    setCargandoHistorial(true);
+    try {
+      const lista = await obtenerHistorialConsultasML(CONSULTAS_INICIALES);
+      setHistorial(lista);
+      if (lista.length > 0) {
+        setSeleccionadaId((prev) =>
+          lista.some((x) => x.id_conversacion === prev)
+            ? prev
+            : lista[0].id_conversacion,
+        );
+      }
+    } finally {
+      setCargandoHistorial(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void cargarBandeja();
+    const handler = () => {
+      void cargarBandeja();
+    };
+    window.addEventListener("hurios-nueva-consulta-ml", handler);
+    return () =>
+      window.removeEventListener("hurios-nueva-consulta-ml", handler);
+  }, [cargarBandeja]);
 
   const historialFiltrado = useMemo(() => {
     if (filtroCategoria === "TODAS") return historial;
-    return historial.filter((item) => item.intencion_predicha === filtroCategoria);
+    return historial.filter(
+      (item) => item.intencion_predicha === filtroCategoria,
+    );
   }, [historial, filtroCategoria]);
 
   const consultaActiva = useMemo(() => {
@@ -221,31 +232,12 @@ export function ClasificadorML() {
     };
   }, [historial]);
 
-  const ejecutarAnalisis = async (texto: string, hora: number) => {
-    if (!texto.trim()) return;
-    setAnalizando(true);
-    try {
-      const resultado = await clasificarConsultaML(texto.trim(), hora);
-      setHistorial((prev) => [resultado, ...prev]);
-      setSeleccionadaId(resultado.id_conversacion);
-      setFiltroCategoria("TODAS");
-      setNuevoMensaje("");
-    } finally {
-      setAnalizando(false);
-    }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    await ejecutarAnalisis(nuevoMensaje, horaMensaje);
-  };
-
   return (
     <>
       <Navbar />
       <main className="px-4 py-6 sm:px-6 max-w-5xl mx-auto">
         <section className="bg-white/95 border border-gray-200 rounded-xl p-5 shadow-sm">
-          {/* Cabecera limpia alineada con el resto del panel administrativo */}
+          {/* Cabecera */}
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between pb-4 border-b border-gray-200">
             <div className="flex items-center gap-3">
               <button
@@ -257,108 +249,61 @@ export function ClasificadorML() {
               </button>
               <div>
                 <h1 className="text-xl sm:text-2xl font-semibold text-gray-900">
-                  Asistente de Clasificación de Consultas
+                  Bandeja de Atención Inteligente
                 </h1>
                 <p className="text-sm text-gray-500">
-                  Priorización automática de mensajes de clientes y búsqueda de repuestos disponibles.
+                  Registro de consultas recibidas por el asistente de WhatsApp y respuestas automáticas enviadas.
                 </p>
               </div>
             </div>
 
-            {/* Selector de pestañas */}
-            <div className="inline-flex rounded-lg border border-gray-200 bg-gray-100 p-1 self-start sm:self-auto">
+            <div className="flex items-center gap-2 self-start sm:self-auto">
               <button
                 type="button"
-                onClick={() => setVistaActiva("bandeja")}
-                className={`px-3.5 py-1.5 text-sm font-medium rounded-md transition-colors cursor-pointer ${
-                  vistaActiva === "bandeja"
-                    ? "bg-white text-gray-900 shadow-xs"
-                    : "text-gray-600 hover:text-gray-900"
-                }`}
+                onClick={() => void cargarBandeja()}
+                disabled={cargandoHistorial}
+                className="px-3 py-1.5 border border-gray-300 rounded-lg text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer"
               >
-                Bandeja y Simulador
+                {cargandoHistorial ? "Actualizando..." : "↻ Actualizar bandeja"}
               </button>
-              <button
-                type="button"
-                onClick={() => setVistaActiva("estadisticas")}
-                className={`px-3.5 py-1.5 text-sm font-medium rounded-md transition-colors cursor-pointer ${
-                  vistaActiva === "estadisticas"
-                    ? "bg-white text-gray-900 shadow-xs"
-                    : "text-gray-600 hover:text-gray-900"
-                }`}
-              >
-                Rendimiento
-              </button>
+
+              <div className="inline-flex rounded-lg border border-gray-200 bg-gray-100 p-1">
+                <button
+                  type="button"
+                  onClick={() => setVistaActiva("bandeja")}
+                  className={`px-3 py-1 text-xs sm:text-sm font-medium rounded-md transition-colors cursor-pointer ${
+                    vistaActiva === "bandeja"
+                      ? "bg-white text-gray-900 shadow-xs"
+                      : "text-gray-600 hover:text-gray-900"
+                  }`}
+                >
+                  Consultas
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setVistaActiva("estadisticas")}
+                  className={`px-3 py-1 text-xs sm:text-sm font-medium rounded-md transition-colors cursor-pointer ${
+                    vistaActiva === "estadisticas"
+                      ? "bg-white text-gray-900 shadow-xs"
+                      : "text-gray-600 hover:text-gray-900"
+                  }`}
+                >
+                  Rendimiento
+                </button>
+              </div>
             </div>
           </div>
 
           {vistaActiva === "bandeja" ? (
-            <div className="mt-5 space-y-5">
-              {/* Simulador de entrada de mensajes */}
-              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
-                  <h2 className="text-sm font-semibold text-gray-800">
-                    Analizar nueva consulta de cliente
-                  </h2>
-                  <div className="flex flex-wrap gap-1.5">
-                    {SUGERENCIAS_PRUEBA.map((sug, i) => (
-                      <button
-                        key={i}
-                        type="button"
-                        onClick={() => {
-                          setNuevoMensaje(sug.texto);
-                          setHoraMensaje(sug.hora);
-                        }}
-                        className="px-2.5 py-1 text-xs bg-white hover:bg-gray-100 text-gray-700 border border-gray-200 rounded-md transition-colors cursor-pointer"
-                      >
-                        {sug.titulo}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <form onSubmit={handleSubmit} className="space-y-3">
-                  <textarea
-                    rows={2}
-                    value={nuevoMensaje}
-                    onChange={(e) => setNuevoMensaje(e.target.value)}
-                    placeholder="Escribe o pega el mensaje recibido por WhatsApp o chat web para clasificarlo..."
-                    className="w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[var(--Primary_5)]"
-                  />
-
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <label className="text-xs font-medium text-gray-600">
-                        Hora de recepción:
-                      </label>
-                      <select
-                        value={horaMensaje}
-                        onChange={(e) => setHoraMensaje(Number(e.target.value))}
-                        className="px-2.5 py-1.5 bg-white border border-gray-300 rounded-md text-xs font-medium text-gray-800"
-                      >
-                        {Array.from({ length: 24 }, (_, h) => (
-                          <option key={h} value={h}>
-                            {String(h).padStart(2, "0")}:00 hrs{" "}
-                            {h >= 18 || h < 8
-                              ? "(Horario nocturno)"
-                              : "(Horario comercial)"}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <button
-                      type="submit"
-                      disabled={analizando || !nuevoMensaje.trim()}
-                      className="px-5 py-2 bg-[var(--Primary_5)] hover:bg-[#1e4a6f] text-white text-sm font-medium rounded-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {analizando ? "Analizando..." : "Clasificar mensaje"}
-                    </button>
-                  </div>
-                </form>
+            <div className="mt-5 space-y-4">
+              {/* Aviso instructivo sutil */}
+              <div className="bg-emerald-50/70 border border-emerald-200 rounded-lg px-4 py-2.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs text-emerald-900">
+                <span>
+                  💬 Todas las consultas que los clientes envían desde el <strong>botón flotante de WhatsApp</strong> (esquina inferior derecha) son respondidas automáticamente y quedan registradas en esta bandeja.
+                </span>
               </div>
 
-              {/* Filtros por tipo de consulta */}
+              {/* Filtros por categoría */}
               <div className="flex flex-wrap items-center gap-2">
                 {(
                   [
@@ -396,20 +341,20 @@ export function ClasificadorML() {
                 })}
               </div>
 
-              {/* Vista Maestro-Detalle: Lista de mensajes e inspección */}
+              {/* Vista Maestro-Detalle */}
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-                {/* Lista de consultas (Izquierda) */}
+                {/* Lista de consultas recibidas (Izquierda) */}
                 <div className="lg:col-span-5 border border-gray-200 rounded-xl overflow-hidden bg-white">
                   <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
                     <span className="text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                      Mensajes analizados
+                      Historial de mensajes
                     </span>
                     <span className="text-xs text-gray-500">
-                      {historialFiltrado.length} registro
+                      {historialFiltrado.length} consulta
                       {historialFiltrado.length === 1 ? "" : "s"}
                     </span>
                   </div>
-                  <div className="divide-y divide-gray-100 max-h-[420px] overflow-y-auto">
+                  <div className="divide-y divide-gray-100 max-h-[460px] overflow-y-auto">
                     {historialFiltrado.map((item) => {
                       const meta =
                         META_INTENCION[item.intencion_predicha] ||
@@ -437,8 +382,9 @@ export function ClasificadorML() {
                               />
                               {meta.nombre}
                             </span>
-                            <span className="text-xs text-gray-500">
-                              {String(item.hora_del_dia).padStart(2, "0")}:00 hrs
+                            <span className="text-[11px] text-gray-500">
+                              {item.timestamp_primer_mensaje ||
+                                `${String(item.hora_del_dia).padStart(2, "0")}:00 hrs`}
                             </span>
                           </div>
                           <p className="text-sm text-gray-800 line-clamp-2">
@@ -453,7 +399,7 @@ export function ClasificadorML() {
                             </span>
                             {item.es_fuera_horario && (
                               <span className="text-amber-700 font-medium">
-                                Fuera de horario
+                                Horario nocturno
                               </span>
                             )}
                           </div>
@@ -463,14 +409,14 @@ export function ClasificadorML() {
                   </div>
                 </div>
 
-                {/* Detalle de la consulta seleccionada (Derecha) */}
+                {/* Detalle de la conversación seleccionada (Derecha) */}
                 <div className="lg:col-span-7 border border-gray-200 rounded-xl p-5 bg-white flex flex-col justify-between">
                   {consultaActiva ? (
-                    <div className="space-y-5">
-                      <div className="flex flex-wrap items-start justify-between gap-3 pb-4 border-b border-gray-100">
+                    <div className="space-y-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3 pb-3 border-b border-gray-100">
                         <div>
                           <span className="text-xs text-gray-500 block mb-1">
-                            Categoría detectada
+                            Categoría asignada automáticamente
                           </span>
                           <span
                             className={`inline-flex items-center gap-2 px-3 py-1 rounded-md text-sm font-semibold border ${
@@ -494,7 +440,7 @@ export function ClasificadorML() {
                         <div className="flex items-center gap-6">
                           <div>
                             <span className="text-xs text-gray-500 block">
-                              Horario
+                              Recepción
                             </span>
                             <span className="text-sm font-medium text-gray-800">
                               {String(consultaActiva.hora_del_dia).padStart(
@@ -509,7 +455,7 @@ export function ClasificadorML() {
                           </div>
                           <div className="text-right">
                             <span className="text-xs text-gray-500 block">
-                              Nivel de certeza
+                              Certeza
                             </span>
                             <span className="text-xl font-bold text-[var(--Primary_5)]">
                               {(consultaActiva.confianza_modelo * 100).toFixed(
@@ -521,66 +467,71 @@ export function ClasificadorML() {
                         </div>
                       </div>
 
-                      {/* Mensaje recibido */}
-                      <div>
-                        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
-                          Mensaje del cliente
-                        </h3>
-                        <div className="p-3.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-900">
-                          &ldquo;{consultaActiva.texto_cliente}&rdquo;
+                      {/* Conversación registrada (Mensaje Cliente + Respuesta Bot) */}
+                      <div className="space-y-2.5 bg-[#ECE5DD]/60 p-3.5 rounded-xl border border-gray-200">
+                        <div>
+                          <span className="text-[11px] font-semibold text-gray-600 block mb-1">
+                            Cliente escribió:
+                          </span>
+                          <div className="bg-white border border-gray-200 rounded-lg p-3 text-sm text-gray-900 shadow-2xs">
+                            {consultaActiva.texto_cliente}
+                          </div>
                         </div>
-                        {consultaActiva.texto_normalizado && (
-                          <p className="text-xs text-gray-500 mt-1.5">
-                            Interpretación estandarizada:{" "}
-                            <span className="text-gray-700 font-medium">
-                              {consultaActiva.texto_normalizado}
+
+                        {consultaActiva.respuesta_automatica_bot && (
+                          <div>
+                            <span className="text-[11px] font-semibold text-emerald-800 block mb-1">
+                              Respuesta automática enviada por Hurios Rally:
                             </span>
-                          </p>
+                            <div className="bg-[#DCF8C6] border border-emerald-200 rounded-lg p-3 text-xs sm:text-sm text-gray-900 whitespace-pre-line shadow-2xs">
+                              {consultaActiva.respuesta_automatica_bot}
+                            </div>
+                          </div>
                         )}
                       </div>
 
-                      {/* Acción recomendada */}
-                      <div className="p-3.5 bg-blue-50/50 border border-blue-200 rounded-lg">
+                      {/* Acción interna sugerida */}
+                      <div className="p-3 bg-blue-50/50 border border-blue-200 rounded-lg">
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-xs font-semibold text-blue-900">
-                            Acción recomendada para atención
+                            Seguimiento interno sugerido
                           </span>
                           {consultaActiva.requiere_derivacion_humana && (
                             <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded text-[11px] font-semibold">
-                              Derivación a asesor sugerida
+                              Requiere revisión de asesor
                             </span>
                           )}
                         </div>
-                        <p className="text-sm text-gray-800">
+                        <p className="text-xs sm:text-sm text-gray-800">
                           {consultaActiva.accion_negocio_sugerida}
                         </p>
                       </div>
 
-                      {/* Repuestos disponibles en catálogo */}
+                      {/* Repuestos vinculados del inventario */}
                       {consultaActiva.productos_sugeridos_supabase &&
                         consultaActiva.productos_sugeridos_supabase.length >
                           0 && (
                           <div>
                             <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                              Repuestos sugeridos en inventario
+                              Repuestos cotizados del inventario
                             </h3>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                               {consultaActiva.productos_sugeridos_supabase.map(
                                 (prod) => (
                                   <div
                                     key={prod.id}
-                                    className="p-3 border border-gray-200 rounded-lg flex items-center justify-between bg-white"
+                                    className="p-2.5 border border-gray-200 rounded-lg flex items-center justify-between bg-white"
                                   >
                                     <div>
-                                      <p className="text-sm font-medium text-gray-900 line-clamp-1">
+                                      <p className="text-xs sm:text-sm font-medium text-gray-900 line-clamp-1">
                                         {prod.nombre}
                                       </p>
-                                      <p className="text-xs text-gray-500">
+                                      <p className="text-[11px] text-gray-500">
                                         {prod.categoria} • Stock:{" "}
                                         {prod.stock_disponible} und.
                                       </p>
                                     </div>
-                                    <span className="text-sm font-bold text-[var(--Primary_5)] ml-3 shrink-0">
+                                    <span className="text-xs sm:text-sm font-bold text-[var(--Primary_5)] ml-3 shrink-0">
                                       S/ {Number(prod.precio_soles).toFixed(2)}
                                     </span>
                                   </div>
@@ -590,10 +541,10 @@ export function ClasificadorML() {
                           </div>
                         )}
 
-                      {/* Distribución de probabilidades */}
+                      {/* Barras de afinidad */}
                       <div className="pt-2 border-t border-gray-100">
-                        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2.5">
-                          Afinidad por categoría
+                        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                          Probabilidad por categoría
                         </h3>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
                           {(

@@ -16,6 +16,8 @@ export type TipoIntencion =
 
 export interface PrediccionMLResponse {
   id_conversacion: string;
+  timestamp_primer_mensaje?: string;
+  timestamp_respuesta_bot?: string;
   texto_cliente: string;
   texto_normalizado: string;
   intencion_predicha: TipoIntencion;
@@ -25,6 +27,7 @@ export interface PrediccionMLResponse {
   es_fuera_horario: boolean;
   requiere_derivacion_humana: boolean;
   accion_negocio_sugerida: string;
+  respuesta_automatica_bot?: string;
   modelo_utilizado: string;
   productos_sugeridos_supabase?: ProductoSugeridoML[];
 }
@@ -39,6 +42,8 @@ export interface ModeloComparadoInfo {
   test_f1: number;
   ganador: boolean;
 }
+
+const STORAGE_KEY = "hurios_consultas_ml_registradas_v1";
 
 export const MODELOS_COMPARADOS: ModeloComparadoInfo[] = [
   {
@@ -110,7 +115,10 @@ function normalizarJergaLocal(texto: string): string {
     .trim();
 }
 
-function limpiarTextoAccion(intencion: TipoIntencion, requiereHumano: boolean): string {
+function limpiarTextoAccion(
+  intencion: TipoIntencion,
+  requiereHumano: boolean,
+): string {
   const base = ACCIONES_LIMPIAS[intencion] || "Asignar a bandeja de atención.";
   if (requiereHumano && intencion !== "SPAM") {
     return `Atención asistida recomendada: ${base}`;
@@ -118,29 +126,109 @@ function limpiarTextoAccion(intencion: TipoIntencion, requiereHumano: boolean): 
   return base;
 }
 
+export function generarRespuestaBot(
+  intencion: TipoIntencion,
+  productos: ProductoSugeridoML[],
+  requiereHumano: boolean,
+): string {
+  if (intencion === "COTIZACION") {
+    if (productos && productos.length > 0) {
+      const lista = productos
+        .map(
+          (p) =>
+            `• ${p.nombre} — S/ ${Number(p.precio_soles).toFixed(2)} (${p.stock_disponible} en stock)`,
+        )
+        .join("\n");
+      return `¡Hola! Gracias por escribir a Hurios Rally. Tenemos disponibilidad inmediata para tu consulta:\n${lista}\nPuedes comprarlos directamente en la web con Yape, Plin o tarjeta, o continuar con un asesor.`;
+    }
+    return "¡Hola! Hemos registrado tu solicitud de cotización. Contamos con stock de repuestos originales y alternativos para Bajaj, TVS y motos lineales. En breve un asesor te confirmará el precio exacto.";
+  }
+  if (intencion === "CONSULTA_TECNICA") {
+    if (productos && productos.length > 0) {
+      const p = productos[0];
+      return `¡Hola! Sobre tu consulta técnica: contamos con ${p.nombre} (S/ ${Number(p.precio_soles).toFixed(2)}, ${p.stock_disponible} und. en stock). ${
+        requiereHumano
+          ? "Hemos derivado tu pregunta a nuestro especialista mecánico para confirmarte la medida exacta."
+          : "El repuesto cuenta con garantía de compatibilidad estándar."
+      }`;
+    }
+    return "¡Hola! Hemos recibido tu consulta técnica de compatibilidad. Nuestro especialista mecánico revisará los detalles de tu modelo para darte una respuesta precisa.";
+  }
+  if (intencion === "ESTADO_PEDIDO") {
+    return "¡Hola! Hemos recibido tu consulta sobre el estado de tu compra o pago. Tu solicitud ya está priorizada en el área de despacho; puedes revisar tu comprobante en 'Mis Pedidos' o indicarnos tu número de orden.";
+  }
+  return "Gracias por comunicarte con Hurios Rally. Este canal está dedicado a la venta y asesoría de repuestos para vehículos menores.";
+}
+
+function leerCacheLocal(): PrediccionMLResponse[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function guardarEnCacheLocal(item: PrediccionMLResponse) {
+  try {
+    const actual = leerCacheLocal().filter(
+      (x) => x.id_conversacion !== item.id_conversacion,
+    );
+    const nuevo = [item, ...actual].slice(0, 50);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(nuevo));
+  } catch {
+    // ignore storage errors
+  }
+}
+
 export async function clasificarConsultaML(
   textoCliente: string,
-  horaDelDia: number,
+  horaDelDia?: number,
 ): Promise<PrediccionMLResponse> {
+  const ahora = new Date();
+  const hora =
+    typeof horaDelDia === "number" ? horaDelDia : ahora.getHours();
+  const fechaStr = ahora.toLocaleString("es-PE", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+
   try {
     const response = await fetch(`${API_BASE_URL}/api/ml/clasificar`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         texto_cliente: textoCliente,
-        hora_del_dia: horaDelDia,
+        hora_del_dia: hora,
       }),
     });
     if (response.ok) {
       const data = (await response.json()) as PrediccionMLResponse;
       if (data && data.intencion_predicha) {
-        return {
+        const prods = data.productos_sugeridos_supabase || [];
+        const enriquecido: PrediccionMLResponse = {
           ...data,
+          timestamp_primer_mensaje: data.timestamp_primer_mensaje || fechaStr,
           accion_negocio_sugerida: limpiarTextoAccion(
             data.intencion_predicha,
             data.requiere_derivacion_humana,
           ),
+          respuesta_automatica_bot:
+            data.respuesta_automatica_bot ||
+            generarRespuestaBot(
+              data.intencion_predicha,
+              prods,
+              data.requiere_derivacion_humana,
+            ),
         };
+        guardarEnCacheLocal(enriquecido);
+        return enriquecido;
       }
     }
   } catch {
@@ -148,7 +236,7 @@ export async function clasificarConsultaML(
   }
 
   const norm = normalizarJergaLocal(textoCliente);
-  const fueraHorario = horaDelDia >= 18 || horaDelDia < 8;
+  const fueraHorario = hora >= 18 || hora < 8;
 
   let sCot = 0.15;
   let sTec = 0.15;
@@ -193,7 +281,8 @@ export async function clasificarConsultaML(
     (intencion_predicha === "CONSULTA_TECNICA" && confianza_modelo < 0.85);
 
   const productosDemo: ProductoSugeridoML[] =
-    intencion_predicha === "COTIZACION" || intencion_predicha === "CONSULTA_TECNICA"
+    intencion_predicha === "COTIZACION" ||
+    intencion_predicha === "CONSULTA_TECNICA"
       ? [
           {
             id: 4574,
@@ -212,21 +301,57 @@ export async function clasificarConsultaML(
         ]
       : [];
 
-  return {
-    id_conversacion: crypto.randomUUID ? crypto.randomUUID() : "conv-01",
+  const localResult: PrediccionMLResponse = {
+    id_conversacion: crypto.randomUUID ? crypto.randomUUID() : `conv-${Date.now()}`,
+    timestamp_primer_mensaje: fechaStr,
     texto_cliente: textoCliente,
     texto_normalizado: norm,
     intencion_predicha,
     confianza_modelo,
     probabilidades,
-    hora_del_dia: horaDelDia,
+    hora_del_dia: hora,
     es_fuera_horario: fueraHorario,
     requiere_derivacion_humana,
     accion_negocio_sugerida: limpiarTextoAccion(
       intencion_predicha,
       requiere_derivacion_humana,
     ),
+    respuesta_automatica_bot: generarRespuestaBot(
+      intencion_predicha,
+      productosDemo,
+      requiere_derivacion_humana,
+    ),
     modelo_utilizado: "SVM Lineal",
     productos_sugeridos_supabase: productosDemo,
   };
+
+  guardarEnCacheLocal(localResult);
+  return localResult;
+}
+
+export async function obtenerHistorialConsultasML(
+  semillaInicial: PrediccionMLResponse[],
+): Promise<PrediccionMLResponse[]> {
+  const locales = leerCacheLocal();
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/ml/historial`);
+    if (response.ok) {
+      const remotos = (await response.json()) as PrediccionMLResponse[];
+      if (Array.isArray(remotos) && remotos.length > 0) {
+        const idsRemotos = new Set(remotos.map((r) => r.id_conversacion));
+        const soloLocales = locales.filter(
+          (l) => !idsRemotos.has(l.id_conversacion),
+        );
+        return [...soloLocales, ...remotos];
+      }
+    }
+  } catch {
+    // Usa caché local + registros iniciales si el servidor está actualizándose
+  }
+
+  const idsLocales = new Set(locales.map((l) => l.id_conversacion));
+  const restantes = semillaInicial.filter(
+    (s) => !idsLocales.has(s.id_conversacion),
+  );
+  return [...locales, ...restantes];
 }
