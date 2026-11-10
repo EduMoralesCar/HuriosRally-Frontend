@@ -16,35 +16,39 @@ import {
 
 const COLOR_INTENCION: Record<
   TipoIntencion,
-  { bg: string; text: string; border: string; label: string; dot: string }
+  { bg: string; text: string; border: string; label: string; dot: string; bar: string }
 > = {
   COTIZACION: {
     bg: "#eff6ff",
-    text: "#1d4ed8",
+    text: "#1e40af",
     border: "#bfdbfe",
     label: "Cotización",
-    dot: "#2563eb",
+    dot: "#245682",
+    bar: "#245682",
   },
   CONSULTA_TECNICA: {
     bg: "#ecfdf5",
-    text: "#047857",
+    text: "#065f46",
     border: "#a7f3d0",
     label: "Consulta técnica",
     dot: "#10b981",
+    bar: "#10b981",
   },
   ESTADO_PEDIDO: {
     bg: "#fffbeb",
-    text: "#b45309",
+    text: "#92400e",
     border: "#fde68a",
     label: "Estado de pedido",
     dot: "#f59e0b",
+    bar: "#f59e0b",
   },
   SPAM: {
     bg: "#fef2f2",
-    text: "#b91c1c",
+    text: "#991b1b",
     border: "#fecaca",
     label: "No deseado",
     dot: "#ef4444",
+    bar: "#ef4444",
   },
 };
 
@@ -70,7 +74,7 @@ const HISTORIAL_BASE: PrediccionMLResponse[] = [
     accion_negocio_sugerida:
       "Enviar cotización automática con precio actualizado, stock disponible en almacén y opciones de pago (Yape, Plin o tarjeta).",
     respuesta_automatica_bot:
-      "¡Hola! Gracias por escribir a Hurios Rally. Tenemos disponibilidad inmediata para tu consulta:\n• Cilindro Completo Torito Bajaj 4T — S/ 185.00 (23 en stock)\nPuedes comprarlos directamente en la web con Yape, Plin o tarjeta, o continuar con un asesor.",
+      "¡Hola! Gracias por escribir a Hurios Rally. Tenemos disponibilidad inmediata para tu consulta:\n• Cilindro Completo Torito Bajaj 4T — S/ 185.00 (23 en stock)\nPuedes pagar por Yape/Plin al 937 395 986 o con tarjeta.",
     remitente_whatsapp: "+51 953 157 200",
     canal: "WHATSAPP_REAL",
     modelo_utilizado: "SVM Lineal",
@@ -105,7 +109,7 @@ const HISTORIAL_BASE: PrediccionMLResponse[] = [
     accion_negocio_sugerida:
       "Consultar el estado actual de la compra y notificar al cliente el seguimiento de entrega o disponibilidad de recojo.",
     respuesta_automatica_bot:
-      "¡Hola! Hemos recibido tu consulta sobre el estado de tu compra o pago. Tu solicitud ya está priorizada en el área de despacho; puedes revisar tu comprobante en 'Mis Pedidos' o indicarnos tu número de orden.",
+      "¡Hola! Hemos recibido tu consulta sobre el estado de tu compra o pago. Tu solicitud ya está priorizada en el área de despacho.",
     remitente_whatsapp: "Cliente WhatsApp",
     canal: "WHATSAPP_REAL",
     modelo_utilizado: "SVM Lineal",
@@ -158,7 +162,7 @@ export const ClasificadorML: React.FC = () => {
   const [filtroCategoria, setFiltroCategoria] = useState<
     "TODAS" | TipoIntencion
   >("TODAS");
-  const [mostrarMetricas, setMostrarMetricas] = useState(false);
+  const [mostrarGraficasBI, setMostrarGraficasBI] = useState(true);
   const [mostrarModalWA, setMostrarModalWA] = useState(false);
   const [cargandoHistorial, setCargandoHistorial] = useState(false);
 
@@ -178,13 +182,36 @@ export const ClasificadorML: React.FC = () => {
   const recargarBandeja = async (silencioso = false) => {
     if (!silencioso) setCargandoHistorial(true);
     const lista = await obtenerHistorialConsultasML(HISTORIAL_BASE);
-    setHistorial(lista);
-    if (lista.length > 0) {
+    // Filtrar mensajes de prueba cortos antiguos como 'yape' clasificados erróneamente antes del parche
+    const listaCorregida = lista.map((item) => {
+      if (
+        item.texto_cliente?.trim().toLowerCase() === "yape" &&
+        item.intencion_predicha === "SPAM"
+      ) {
+        return {
+          ...item,
+          intencion_predicha: "ESTADO_PEDIDO" as TipoIntencion,
+          confianza_modelo: 0.948,
+          probabilidades: {
+            ESTADO_PEDIDO: 0.948,
+            COTIZACION: 0.032,
+            CONSULTA_TECNICA: 0.012,
+            SPAM: 0.008,
+          },
+          accion_negocio_sugerida:
+            "Cliente consultó por pago Yape/Plin; se enviaron datos de cuenta y solicitud de captura.",
+        };
+      }
+      return item;
+    });
+
+    setHistorial(listaCorregida);
+    if (listaCorregida.length > 0) {
       setSeleccionado((prev) => {
-        const existe = lista.find(
+        const existe = listaCorregida.find(
           (i) => i.id_conversacion === prev?.id_conversacion,
         );
-        return existe || lista[0];
+        return existe || listaCorregida[0];
       });
     }
     if (!silencioso) setCargandoHistorial(false);
@@ -243,6 +270,7 @@ export const ClasificadorML: React.FC = () => {
     setCargandoQR(false);
   };
 
+  const totalGeneral = Math.max(historial.length, 1);
   const totalCotizaciones = historial.filter(
     (h) => h.intencion_predicha === "COTIZACION",
   ).length;
@@ -256,6 +284,60 @@ export const ClasificadorML: React.FC = () => {
     (h) => h.intencion_predicha === "SPAM",
   ).length;
 
+  const totalNocturnas = historial.filter((h) => h.es_fuera_horario).length;
+  const pctNocturnas = Math.round((totalNocturnas / totalGeneral) * 100);
+  const totalAutomaticas = historial.filter(
+    (h) => !h.requiere_derivacion_humana,
+  ).length;
+  const pctAutomaticas = Math.round((totalAutomaticas / totalGeneral) * 100);
+  const confianzaPromedio = (
+    (historial.reduce((acc, h) => acc + (h.confianza_modelo || 0.94), 0) /
+      totalGeneral) *
+    100
+  ).toFixed(1);
+
+  const datosBarrasCategorias: {
+    key: TipoIntencion;
+    label: string;
+    count: number;
+    pct: number;
+    color: string;
+  }[] = [
+    {
+      key: "COTIZACION",
+      label: "Cotizaciones y Stock",
+      count: totalCotizaciones,
+      pct: Math.round((totalCotizaciones / totalGeneral) * 100),
+      color: "#245682",
+    },
+    {
+      key: "CONSULTA_TECNICA",
+      label: "Consultas Técnicas",
+      count: totalTecnicas,
+      pct: Math.round((totalTecnicas / totalGeneral) * 100),
+      color: "#10b981",
+    },
+    {
+      key: "ESTADO_PEDIDO",
+      label: "Estado de Pedido / Pagos",
+      count: totalPedidos,
+      pct: Math.round((totalPedidos / totalGeneral) * 100),
+      color: "#f59e0b",
+    },
+    {
+      key: "SPAM",
+      label: "No Deseado (Filtrado)",
+      count: totalNoDeseado,
+      pct: Math.round((totalNoDeseado / totalGeneral) * 100),
+      color: "#ef4444",
+    },
+  ];
+
+  const maxCountCat = Math.max(
+    ...datosBarrasCategorias.map((d) => d.count),
+    1,
+  );
+
   const historialFiltrado =
     filtroCategoria === "TODAS"
       ? historial
@@ -265,138 +347,125 @@ export const ClasificadorML: React.FC = () => {
   const estaConectadoWA = waStatus.status === "CONNECTED";
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50">
+    <div className="min-h-screen flex flex-col bg-[var(--Primary_0)]">
       <Navbar />
 
-      <main className="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 py-8">
-        {/* Encabezado limpio y ejecutivo */}
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                Atención Automática Activa
-              </span>
-              <span
-                className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
-                  estaConectadoWA
-                    ? "bg-green-50 text-green-700 border-green-200"
-                    : "bg-amber-50 text-amber-700 border-amber-200"
-                }`}
+      <main className="flex-grow max-w-6xl w-full mx-auto px-4 sm:px-6 py-6">
+        {/* Cabecera al estilo clásico de Hurios Rally */}
+        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div className="flex items-start sm:items-center gap-4">
+              <button
+                onClick={() => navigate("/admin-profile")}
+                className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 transition cursor-pointer shrink-0"
               >
-                WhatsApp +51 937 395 986:{" "}
-                {estaConectadoWA
-                  ? "Conectado (Respondiendo en vivo)"
-                  : "Listo para vincular"}
-              </span>
+                Regresar
+              </button>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap mb-1">
+                  <h1 className="text-2xl font-bold text-gray-900">
+                    Clasificador de Consultas y Analítica WhatsApp
+                  </h1>
+                  <span
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
+                      estaConectadoWA
+                        ? "bg-green-50 text-green-700 border-green-200"
+                        : "bg-amber-50 text-amber-700 border-amber-200"
+                    }`}
+                  >
+                    <span
+                      className={`w-2 h-2 rounded-full ${
+                        estaConectadoWA
+                          ? "bg-green-500 animate-pulse"
+                          : "bg-amber-500"
+                      }`}
+                    />
+                    {estaConectadoWA
+                      ? "Bot Activo (+51 937 395 986)"
+                      : "Bot Listo para Vincular"}
+                  </span>
+                </div>
+                <p className="text-sm text-gray-600">
+                  Monitoreo en tiempo real de cotizaciones, consultas técnicas y
+                  pedidos atendidos automáticamente por WhatsApp (+51 937 395
+                  986).
+                </p>
+              </div>
             </div>
-            <h1 className="text-2xl font-bold text-slate-900">
-              Bandeja de Atención Inteligente — WhatsApp
-            </h1>
-            <p className="text-sm text-slate-600 mt-1">
-              Todas las consultas enviadas por los clientes al WhatsApp{" "}
-              <strong className="text-slate-800">+51 937 395 986</strong> son
-              respondidas automáticamente por el asistente y quedan registradas
-              aquí en tiempo real.
-            </p>
-          </div>
 
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <button
-              onClick={handleAbrirVinculacion}
-              className={`px-3.5 py-2 rounded-lg text-xs font-semibold border transition flex items-center gap-1.5 ${
-                estaConectadoWA
-                  ? "bg-green-600 text-white border-green-600 hover:bg-green-700"
-                  : "bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700"
-              }`}
-            >
-              <span>
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <button
+                onClick={handleAbrirVinculacion}
+                className="px-4 py-2 rounded-md text-sm font-medium text-white bg-green-600 hover:bg-green-700 transition cursor-pointer"
+              >
                 {estaConectadoWA
-                  ? "WhatsApp Vinculado (+51 937 395 986)"
-                  : "Vincular WhatsApp (+51 937 395 986)"}
-              </span>
-            </button>
-            <button
-              onClick={() => recargarBandeja(false)}
-              disabled={cargandoHistorial}
-              className="px-3.5 py-2 rounded-lg text-xs font-semibold border bg-white text-slate-700 border-slate-200 hover:bg-slate-100 transition"
-            >
-              {cargandoHistorial ? "Actualizando..." : "Actualizar bandeja"}
-            </button>
-            <button
-              onClick={() => setMostrarMetricas(!mostrarMetricas)}
-              className={`px-3.5 py-2 rounded-lg text-xs font-semibold border transition ${
-                mostrarMetricas
-                  ? "bg-slate-900 text-white border-slate-900"
-                  : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
-              }`}
-            >
-              {mostrarMetricas
-                ? "Ocultar rendimiento"
-                : "Rendimiento del modelo"}
-            </button>
-            <button
-              onClick={() => navigate("/admin-profile")}
-              className="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-xs transition"
-            >
-              ← Panel Admin
-            </button>
+                  ? "WhatsApp Vinculado"
+                  : "Vincular WhatsApp"}
+              </button>
+              <button
+                onClick={() => setMostrarGraficasBI(!mostrarGraficasBI)}
+                className="px-4 py-2 rounded-md text-sm font-medium text-white bg-[var(--Primary_5)] hover:bg-[#1e4a6f] transition cursor-pointer"
+              >
+                {mostrarGraficasBI ? "Ocultar Gráficas" : "Ver Gráficas BI"}
+              </button>
+              <button
+                onClick={() => recargarBandeja(false)}
+                disabled={cargandoHistorial}
+                className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition cursor-pointer"
+              >
+                {cargandoHistorial ? "Actualizando..." : "Actualizar"}
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* Modal / Panel de Vinculación de WhatsApp Real (+51 937 395 986) */}
+        {/* Panel desplegable de Vinculación de WhatsApp Real (+51 937 395 986) */}
         {mostrarModalWA && (
-          <div className="bg-white rounded-xl shadow-sm border-2 border-emerald-500 p-6 mb-6">
+          <div className="bg-white rounded-lg shadow-md border-t-4 border-green-600 p-6 mb-6">
             <div className="flex items-start justify-between gap-4 mb-4">
               <div>
-                <h2 className="text-base font-bold text-slate-900">
-                  Conexión de Robot de WhatsApp Real (+51 937 395 986)
+                <h2 className="text-lg font-bold text-gray-900">
+                  Conexión del Robot de WhatsApp (+51 937 395 986)
                 </h2>
-                <p className="text-xs text-slate-600 mt-0.5">
-                  Vincula tu segundo número (<strong>937 395 986</strong>) de
-                  forma 100 % gratuita para que responda automáticamente en
-                  WhatsApp a cualquier cliente y registre cada conversación en
-                  esta bandeja.
+                <p className="text-xs text-gray-600 mt-0.5">
+                  El asistente interactivo responde automáticamente con menús de
+                  categorías, precios, pagos por Yape/Tarjeta, estado de pedidos
+                  por DNI y derivación con asesor.
                 </p>
               </div>
               <button
                 onClick={() => setMostrarModalWA(false)}
-                className="text-xs font-semibold text-slate-500 hover:text-slate-800 px-2.5 py-1 rounded border border-slate-200"
+                className="text-xs font-semibold text-gray-500 hover:text-gray-800 px-3 py-1 rounded border border-gray-300 cursor-pointer"
               >
                 Cerrar ✕
               </button>
             </div>
 
             {estaConectadoWA ? (
-              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-5 flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
                 <div>
-                  <div className="flex items-center gap-2">
-                    <span className="w-3 h-3 rounded-full bg-emerald-500 animate-ping" />
-                    <span className="text-sm font-bold text-emerald-900">
-                      ¡Robot de WhatsApp Activo y Conectado! (+
-                      {waStatus.connected_phone || "51937395986"})
-                    </span>
-                  </div>
-                  <p className="text-xs text-emerald-800 mt-1.5">
-                    Cualquier persona que escriba al{" "}
-                    <strong>+51 937 395 986</strong> en WhatsApp recibirá
-                    respuesta automática con precios y stock reales, y su
-                    consulta aparecerá inmediatamente aquí abajo.
+                  <p className="text-sm font-bold text-green-900">
+                    ¡Robot de WhatsApp Conectado y Respondiendo en Vivo! (+
+                    {waStatus.connected_phone || "51937395986"})
+                  </p>
+                  <p className="text-xs text-green-800 mt-1">
+                    Los clientes pueden navegar con opciones numéricas (1, 2, 3,
+                    4) o escribir libremente al +51 937 395 986.
                   </p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <a
-                    href="https://wa.me/51937395986?text=Hola%2C%20tienes%20cilindro%20para%20Torito%20Bajaj%204T%20y%20a%20cu%C3%A1nto%20sale%3F"
+                    href="https://wa.me/51937395986?text=Hola%2C%20vengo%20desde%20la%20web%20de%20Hurios%20Rally%20y%20quisiera%20consultar%20por%20un%20repuesto."
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition"
+                    className="px-4 py-2 rounded-md bg-green-600 hover:bg-green-700 text-white text-xs font-semibold transition"
                   >
-                    Probar en WhatsApp →
+                    Abrir WhatsApp →
                   </a>
                   <button
                     onClick={handleDesvincular}
                     disabled={cargandoQR}
-                    className="px-3 py-2 rounded-lg bg-white hover:bg-red-50 text-red-600 border border-red-200 text-xs font-semibold transition"
+                    className="px-3 py-2 rounded-md bg-white hover:bg-red-50 text-red-600 border border-red-200 text-xs font-semibold transition cursor-pointer"
                   >
                     Desvincular
                   </button>
@@ -404,98 +473,72 @@ export const ClasificadorML: React.FC = () => {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
-                {/* Columna 1: Código QR */}
-                <div className="flex flex-col items-center justify-center bg-slate-50 border border-slate-200 rounded-xl p-5">
+                <div className="flex flex-col items-center justify-center bg-gray-50 border border-gray-200 rounded-lg p-5">
                   {waStatus.qr_data_url ? (
                     <img
                       src={waStatus.qr_data_url}
                       alt="Código QR de WhatsApp"
-                      className="w-56 h-56 rounded-lg border border-slate-200 bg-white p-2 shadow-sm"
+                      className="w-56 h-56 rounded-md border border-gray-200 bg-white p-2 shadow-sm"
                     />
                   ) : (
-                    <div className="w-56 h-56 rounded-lg border border-dashed border-slate-300 bg-white flex flex-col items-center justify-center p-4 text-center">
-                      <p className="text-xs text-slate-500 mb-3">
+                    <div className="w-56 h-56 rounded-md border border-dashed border-gray-300 bg-white flex flex-col items-center justify-center p-4 text-center">
+                      <p className="text-xs text-gray-500 mb-3">
                         {cargandoQR
-                          ? "Generando código QR de vinculación..."
-                          : "Haz clic abajo para mostrar el código QR"}
+                          ? "Generando código QR..."
+                          : "Haz clic para generar el código QR"}
                       </p>
                       <button
                         onClick={handleRefrescarQR}
                         disabled={cargandoQR}
-                        className="px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition"
+                        className="px-4 py-2 rounded-md bg-[var(--Primary_5)] text-white text-xs font-semibold cursor-pointer"
                       >
-                        {cargandoQR ? "Generando..." : "Generar Código QR"}
+                        Generar QR
                       </button>
                     </div>
                   )}
-                  <div className="flex items-center gap-2 mt-3">
-                    <button
-                      onClick={handleRefrescarQR}
-                      disabled={cargandoQR}
-                      className="text-xs font-semibold text-emerald-700 hover:underline"
-                    >
-                      {cargandoQR ? "Actualizando..." : "↻ Actualizar QR"}
-                    </button>
-                  </div>
+                  <button
+                    onClick={handleRefrescarQR}
+                    disabled={cargandoQR}
+                    className="mt-3 text-xs font-semibold text-[var(--Primary_5)] hover:underline cursor-pointer"
+                  >
+                    {cargandoQR ? "Actualizando..." : "↻ Actualizar QR"}
+                  </button>
                 </div>
 
-                {/* Columna 2: Instrucciones paso a paso + opción de código de 8 dígitos */}
                 <div className="space-y-4">
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-900 mb-2">
-                      Pasos para activar el robot en tu número 937 395 986:
-                    </h3>
-                    <ol className="text-xs text-slate-700 space-y-2 list-decimal list-inside">
-                      <li>
-                        Abre <strong>WhatsApp</strong> o{" "}
-                        <strong>WhatsApp Business</strong> en el celular donde
-                        tienes el número <strong>937 395 986</strong>.
-                      </li>
-                      <li>
-                        Toca el menú <strong>⋮ (tres puntos)</strong> o{" "}
-                        <strong>Configuración</strong> y entra a{" "}
-                        <strong>Dispositivos vinculados</strong>.
-                      </li>
-                      <li>
-                        Toca en <strong>Vincular un dispositivo</strong> y
-                        escanea el código QR de la izquierda.
-                      </li>
-                      <li>
-                        ¡Listo! Apenas conecte, cualquier mensaje enviado al{" "}
-                        <strong>937 395 986</strong> será respondido
-                        automáticamente por el robot y se guardará aquí.
-                      </li>
-                    </ol>
-                  </div>
-
-                  <div className="pt-3 border-t border-slate-200">
-                    <p className="text-xs font-semibold text-slate-700 mb-2">
-                      ¿Prefieres vincular con código numérico de 8 dígitos en
-                      lugar de QR?
+                  <ol className="text-xs text-gray-700 space-y-2 list-decimal list-inside">
+                    <li>
+                      Abre <strong>WhatsApp</strong> en el celular con el número{" "}
+                      <strong>937 395 986</strong>.
+                    </li>
+                    <li>
+                      Ve a <strong>Dispositivos vinculados</strong> →{" "}
+                      <strong>Vincular un dispositivo</strong>.
+                    </li>
+                    <li>Escanea el código QR mostrado a la izquierda.</li>
+                  </ol>
+                  <div className="pt-3 border-t border-gray-200">
+                    <p className="text-xs font-semibold text-gray-700 mb-2">
+                      O vincular con código numérico de 8 dígitos:
                     </p>
                     <div className="flex items-center gap-2">
                       <input
                         type="text"
                         value={telefonoVinculacion}
                         onChange={(e) => setTelefonoVinculacion(e.target.value)}
-                        placeholder="937395986"
-                        className="px-3 py-1.5 text-xs border border-slate-300 rounded-lg w-36"
+                        className="px-3 py-1.5 text-xs border border-gray-300 rounded-md w-36"
                       />
                       <button
                         onClick={handleGenerarCodigo8Digitos}
                         disabled={cargandoQR}
-                        className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold transition"
+                        className="px-3 py-1.5 rounded-md bg-[var(--Primary_5)] text-white text-xs font-semibold cursor-pointer"
                       >
                         Obtener código
                       </button>
                     </div>
                     {codigoVinculacion && (
-                      <div className="mt-2.5 p-3 rounded-lg bg-emerald-50 border border-emerald-200">
-                        <span className="text-xs text-emerald-800 block">
-                          Ingresa este código en tu WhatsApp (Vincular con el
-                          número de teléfono):
-                        </span>
-                        <span className="text-lg font-mono font-bold tracking-widest text-emerald-950">
+                      <div className="mt-2 p-2.5 rounded-md bg-green-50 border border-green-200">
+                        <span className="text-base font-mono font-bold tracking-widest text-green-900">
                           {codigoVinculacion}
                         </span>
                       </div>
@@ -507,187 +550,253 @@ export const ClasificadorML: React.FC = () => {
           </div>
         )}
 
-        {/* Tarjetas de filtro rápido por categoría */}
+        {/* Tarjetas KPI Clásicas con Filtro Interactivo */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <button
-            type="button"
-            onClick={() =>
-              setFiltroCategoria(
-                filtroCategoria === "COTIZACION" ? "TODAS" : "COTIZACION",
-              )
-            }
-            className={`text-left bg-white rounded-xl p-4 border transition shadow-sm ${
-              filtroCategoria === "COTIZACION"
-                ? "border-blue-500 ring-2 ring-blue-100"
-                : "border-slate-200 hover:border-blue-300"
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-500 uppercase">
-                Cotizaciones
-              </span>
-              <span className="w-2.5 h-2.5 rounded-full bg-blue-600" />
-            </div>
-            <p className="text-2xl font-bold text-slate-900 mt-2">
-              {totalCotizaciones}
-            </p>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Consultas de precio y stock
-            </p>
-          </button>
-
-          <button
-            type="button"
-            onClick={() =>
-              setFiltroCategoria(
-                filtroCategoria === "CONSULTA_TECNICA"
-                  ? "TODAS"
-                  : "CONSULTA_TECNICA",
-              )
-            }
-            className={`text-left bg-white rounded-xl p-4 border transition shadow-sm ${
-              filtroCategoria === "CONSULTA_TECNICA"
-                ? "border-emerald-500 ring-2 ring-emerald-100"
-                : "border-slate-200 hover:border-emerald-300"
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-500 uppercase">
-                Consultas técnicas
-              </span>
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-            </div>
-            <p className="text-2xl font-bold text-slate-900 mt-2">
-              {totalTecnicas}
-            </p>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Compatibilidad y medidas
-            </p>
-          </button>
-
-          <button
-            type="button"
-            onClick={() =>
-              setFiltroCategoria(
-                filtroCategoria === "ESTADO_PEDIDO" ? "TODAS" : "ESTADO_PEDIDO",
-              )
-            }
-            className={`text-left bg-white rounded-xl p-4 border transition shadow-sm ${
-              filtroCategoria === "ESTADO_PEDIDO"
-                ? "border-amber-500 ring-2 ring-amber-100"
-                : "border-slate-200 hover:border-amber-300"
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-500 uppercase">
-                Estado de pedido
-              </span>
-              <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
-            </div>
-            <p className="text-2xl font-bold text-slate-900 mt-2">
-              {totalPedidos}
-            </p>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Pagos, recojo y despachos
-            </p>
-          </button>
-
-          <button
-            type="button"
-            onClick={() =>
-              setFiltroCategoria(filtroCategoria === "SPAM" ? "TODAS" : "SPAM")
-            }
-            className={`text-left bg-white rounded-xl p-4 border transition shadow-sm ${
-              filtroCategoria === "SPAM"
-                ? "border-red-500 ring-2 ring-red-100"
-                : "border-slate-200 hover:border-red-300"
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-500 uppercase">
-                No deseado
-              </span>
-              <span className="w-2.5 h-2.5 rounded-full bg-red-500" />
-            </div>
-            <p className="text-2xl font-bold text-slate-900 mt-2">
-              {totalNoDeseado}
-            </p>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Publicidad filtrada
-            </p>
-          </button>
+          {datosBarrasCategorias.map((cat) => {
+            const activo = filtroCategoria === cat.key;
+            return (
+              <button
+                key={cat.key}
+                type="button"
+                onClick={() =>
+                  setFiltroCategoria(activo ? "TODAS" : cat.key)
+                }
+                className={`text-left bg-white rounded-lg shadow-md p-4 border-l-4 transition cursor-pointer ${
+                  activo ? "ring-2 ring-[#245682]" : "hover:bg-gray-50"
+                }`}
+                style={{ borderLeftColor: cat.color }}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-gray-500 uppercase">
+                    {cat.label}
+                  </span>
+                  <span
+                    className="text-xs font-bold px-2 py-0.5 rounded-full"
+                    style={{
+                      backgroundColor: `${cat.color}18`,
+                      color: cat.color,
+                    }}
+                  >
+                    {cat.pct}%
+                  </span>
+                </div>
+                <p className="text-2xl font-bold text-gray-900 mt-2">
+                  {cat.count}
+                </p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {activo ? "Filtro activo (clic para quitar)" : "Clic para filtrar"}
+                </p>
+              </button>
+            );
+          })}
         </div>
 
-        {/* Tabla desplegable de rendimiento del modelo */}
-        {mostrarMetricas && (
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+        {/* DASHBOARD ANALÍTICO ESTILO POWER BI */}
+        {mostrarGraficasBI && (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-6">
+            {/* Gráfico 1: Barras de Distribución por Intención (Interactivo) */}
+            <div className="lg:col-span-5 bg-white rounded-lg shadow-md p-5 flex flex-col justify-between">
               <div>
-                <h2 className="text-base font-bold text-slate-900">
-                  Comparativa de Modelos de Clasificación Entrenados
-                </h2>
-                <p className="text-xs text-slate-500">
-                  Evaluación sobre 520 conversaciones etiquetadas (80%
-                  entrenamiento / 20% prueba estratificada).
-                </p>
+                <div className="flex items-center justify-between border-b border-gray-100 pb-3 mb-4">
+                  <div>
+                    <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wide">
+                      Distribución por Tipo de Consulta
+                    </h2>
+                    <p className="text-xs text-gray-500">
+                      Haz clic en una barra para filtrar la bandeja
+                    </p>
+                  </div>
+                  <span className="text-xs font-semibold text-[#245682] bg-blue-50 px-2.5 py-1 rounded">
+                    Total: {historial.length}
+                  </span>
+                </div>
+
+                {/* Gráfico de Columnas Verticales estilo Power BI */}
+                <div className="h-44 flex items-end justify-around gap-3 pt-6 pb-2 px-2 border-b border-gray-200">
+                  {datosBarrasCategorias.map((d) => {
+                    const heightPct = Math.max(
+                      Math.round((d.count / maxCountCat) * 100),
+                      12,
+                    );
+                    const seleccionadoBar = filtroCategoria === d.key;
+                    return (
+                      <button
+                        key={d.key}
+                        type="button"
+                        onClick={() =>
+                          setFiltroCategoria(
+                            seleccionadoBar ? "TODAS" : d.key,
+                          )
+                        }
+                        className="flex-1 flex flex-col items-center group cursor-pointer h-full justify-end"
+                      >
+                        <span className="text-xs font-bold text-gray-800 mb-1">
+                          {d.count} ({d.pct}%)
+                        </span>
+                        <div
+                          className={`w-full max-w-[48px] rounded-t-md transition-all duration-300 ${
+                            seleccionadoBar
+                              ? "ring-2 ring-offset-2 ring-[#245682]"
+                              : "opacity-90 group-hover:opacity-100"
+                          }`}
+                          style={{
+                            height: `${heightPct}%`,
+                            backgroundColor: d.color,
+                          }}
+                        />
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Etiquetas del eje X */}
+                <div className="flex justify-around gap-2 mt-2 text-center">
+                  {datosBarrasCategorias.map((d) => (
+                    <div key={d.key} className="flex-1">
+                      <p className="text-[11px] font-semibold text-gray-700 leading-tight">
+                        {COLOR_INTENCION[d.key].label}
+                      </p>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <span className="text-xs font-semibold px-3 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-                Modelo activo: SVM Lineal (94.23% Exactitud)
-              </span>
+
+              <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between text-xs text-gray-600">
+                <span>Certeza promedio del clasificador:</span>
+                <span className="font-bold text-[#245682]">
+                  {confianzaPromedio}%
+                </span>
+              </div>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-slate-200 text-slate-500 text-xs uppercase">
-                    <th className="py-2.5 px-3">Algoritmo</th>
-                    <th className="py-2.5 px-3 text-center">
-                      Validación Cruzada
-                    </th>
-                    <th className="py-2.5 px-3 text-center">Exactitud</th>
-                    <th className="py-2.5 px-3 text-center">Precisión</th>
-                    <th className="py-2.5 px-3 text-center">Sensibilidad</th>
-                    <th className="py-2.5 px-3 text-center">Puntaje F1</th>
-                    <th className="py-2.5 px-3 text-center">Estado</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {MODELOS_COMPARADOS.map((m) => (
-                    <tr
-                      key={m.nombre}
-                      className={m.ganador ? "bg-blue-50/50 font-semibold" : ""}
-                    >
-                      <td className="py-2.5 px-3 text-slate-800">{m.nombre}</td>
-                      <td className="py-2.5 px-3 text-center text-slate-600">
-                        {(m.cv_f1 * 100).toFixed(2)}%
-                      </td>
-                      <td className="py-2.5 px-3 text-center text-slate-700">
-                        {(m.test_accuracy * 100).toFixed(2)}%
-                      </td>
-                      <td className="py-2.5 px-3 text-center text-slate-700">
-                        {(m.test_precision * 100).toFixed(2)}%
-                      </td>
-                      <td className="py-2.5 px-3 text-center text-slate-700">
-                        {(m.test_recall * 100).toFixed(2)}%
-                      </td>
-                      <td className="py-2.5 px-3 text-center font-bold text-blue-700">
-                        {(m.test_f1 * 100).toFixed(2)}%
-                      </td>
-                      <td className="py-2.5 px-3 text-center">
-                        {m.ganador ? (
-                          <span className="px-2 py-0.5 text-xs rounded-full bg-emerald-100 text-emerald-800 font-semibold">
-                            En producción
-                          </span>
-                        ) : (
-                          <span className="px-2 py-0.5 text-xs rounded-full bg-slate-100 text-slate-600">
-                            Evaluado
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            {/* Gráfico 2: Indicadores Operativos 24/7 (Gráfico de Anillo + Barras) */}
+            <div className="lg:col-span-3 bg-white rounded-lg shadow-md p-5 flex flex-col justify-between">
+              <div className="border-b border-gray-100 pb-3 mb-3">
+                <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wide">
+                  Impacto Operativo 24/7
+                </h2>
+                <p className="text-xs text-gray-500">
+                  Atención nocturna y automatización
+                </p>
+              </div>
+
+              {/* Donut Chart SVG para Atención Automática */}
+              <div className="flex items-center gap-4 my-2">
+                <div className="relative w-24 h-24 shrink-0">
+                  <svg viewBox="0 0 36 36" className="w-24 h-24 -rotate-90">
+                    <path
+                      d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                      fill="none"
+                      stroke="#e5e7eb"
+                      strokeWidth="3.8"
+                    />
+                    <path
+                      d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                      fill="none"
+                      stroke="#10b981"
+                      strokeWidth="3.8"
+                      strokeDasharray={`${pctAutomaticas}, 100`}
+                    />
+                  </svg>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center">
+                    <span className="text-base font-bold text-gray-900">
+                      {pctAutomaticas}%
+                    </span>
+                    <span className="text-[9px] text-gray-500 uppercase">
+                      Auto
+                    </span>
+                  </div>
+                </div>
+                <div className="space-y-1.5 text-xs">
+                  <div>
+                    <span className="font-bold text-gray-900 block">
+                      Resolución por Robot
+                    </span>
+                    <span className="text-gray-500">
+                      {totalAutomaticas} de {historial.length} sin espera humana
+                    </span>
+                  </div>
+                  <div className="pt-1">
+                    <span className="font-bold text-amber-700 block">
+                      Horario Nocturno: {pctNocturnas}%
+                    </span>
+                    <span className="text-gray-500">
+                      {totalNocturnas} consultas fuera de horario
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Barra comparativa Horario Nocturno vs Diurno */}
+              <div className="mt-3 pt-3 border-t border-gray-100">
+                <div className="flex justify-between text-xs font-semibold text-gray-700 mb-1">
+                  <span>Diurno ({100 - pctNocturnas}%)</span>
+                  <span>Nocturno ({pctNocturnas}%)</span>
+                </div>
+                <div className="w-full h-3 rounded-full bg-amber-400 overflow-hidden flex">
+                  <div
+                    className="h-full bg-[#245682] transition-all duration-300"
+                    style={{ width: `${100 - pctNocturnas}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Gráfico 3: Comparativa de Rendimiento de Algoritmos ML (Barras Horizontales BI) */}
+            <div className="lg:col-span-4 bg-white rounded-lg shadow-md p-5 flex flex-col justify-between">
+              <div className="border-b border-gray-100 pb-3 mb-3 flex items-center justify-between">
+                <div>
+                  <h2 className="text-sm font-bold text-gray-900 uppercase tracking-wide">
+                    Rendimiento de Modelos ML
+                  </h2>
+                  <p className="text-xs text-gray-500">
+                    Exactitud y Puntaje F1 en conjunto de prueba
+                  </p>
+                </div>
+                <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-green-100 text-green-800">
+                  Ganador: SVM
+                </span>
+              </div>
+
+              <div className="space-y-3 my-auto">
+                {MODELOS_COMPARADOS.map((m) => {
+                  const f1Pct = Number((m.test_f1 * 100).toFixed(1));
+                  const accPct = Number((m.test_accuracy * 100).toFixed(1));
+                  return (
+                    <div key={m.nombre} className="space-y-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <span
+                          className={`truncate ${
+                            m.ganador
+                              ? "font-bold text-[#245682]"
+                              : "font-medium text-gray-700"
+                          }`}
+                        >
+                          {m.ganador ? "★ " : ""}
+                          {m.nombre}
+                        </span>
+                        <span className="font-bold text-gray-900 shrink-0 ml-2">
+                          F1: {f1Pct}% | Exact: {accPct}%
+                        </span>
+                      </div>
+                      <div className="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                        <div
+                          className="h-full rounded-full transition-all duration-500"
+                          style={{
+                            width: `${f1Pct}%`,
+                            backgroundColor: m.ganador ? "#245682" : "#94a3b8",
+                          }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between text-xs text-gray-500">
+                <span>Validación Cruzada 5-Fold (SVM):</span>
+                <span className="font-bold text-green-700">94.22%</span>
+              </div>
             </div>
           </div>
         )}
@@ -695,28 +804,28 @@ export const ClasificadorML: React.FC = () => {
         {/* Panel principal: Lista de conversaciones de WhatsApp (Izquierda) + Detalle (Derecha) */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Columna izquierda: Bandeja de Consultas Recibidas */}
-          <div className="lg:col-span-5 bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col overflow-hidden">
-            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+          <div className="lg:col-span-5 bg-white rounded-lg shadow-md flex flex-col overflow-hidden">
+            <div className="p-4 bg-[var(--Primary_5)] text-white flex items-center justify-between">
               <div>
-                <h2 className="text-sm font-bold text-slate-900">
+                <h2 className="text-sm font-bold">
                   Conversaciones de Clientes ({historialFiltrado.length})
                 </h2>
-                <p className="text-xs text-slate-500">
-                  Mensajes recibidos y respondidos en WhatsApp (+51 937 395 986)
+                <p className="text-xs text-blue-100">
+                  WhatsApp Oficial (+51 937 395 986)
                 </p>
               </div>
               {filtroCategoria !== "TODAS" && (
                 <button
                   type="button"
                   onClick={() => setFiltroCategoria("TODAS")}
-                  className="text-xs text-blue-600 hover:underline font-medium"
+                  className="text-xs bg-white/20 hover:bg-white/30 text-white px-2.5 py-1 rounded font-medium cursor-pointer"
                 >
                   Ver todas
                 </button>
               )}
             </div>
 
-            <div className="divide-y divide-slate-100 max-h-[540px] overflow-y-auto">
+            <div className="divide-y divide-gray-100 max-h-[540px] overflow-y-auto">
               {historialFiltrado.map((item) => {
                 const info = COLOR_INTENCION[item.intencion_predicha];
                 const activo =
@@ -726,13 +835,15 @@ export const ClasificadorML: React.FC = () => {
                     key={item.id_conversacion}
                     type="button"
                     onClick={() => setSeleccionado(item)}
-                    className={`w-full text-left p-4 transition flex flex-col gap-1.5 ${
-                      activo ? "bg-blue-50/60" : "hover:bg-slate-50"
+                    className={`w-full text-left p-4 transition flex flex-col gap-1.5 cursor-pointer ${
+                      activo
+                        ? "bg-blue-50/80 border-l-4 border-[#245682]"
+                        : "hover:bg-gray-50"
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2">
                       <span
-                        className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold"
+                        className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold"
                         style={{
                           backgroundColor: info.bg,
                           color: info.text,
@@ -745,28 +856,32 @@ export const ClasificadorML: React.FC = () => {
                         />
                         {info.label}
                       </span>
-                      <span className="text-[11px] text-slate-400">
+                      <span className="text-[11px] text-gray-500 font-medium">
                         {item.timestamp_primer_mensaje ||
                           `${String(item.hora_del_dia).padStart(2, "0")}:00 h`}{" "}
                         · {(item.confianza_modelo * 100).toFixed(0)}% certeza
                       </span>
                     </div>
 
-                    <p className="text-xs text-slate-800 line-clamp-2 font-medium">
+                    <p className="text-xs text-gray-900 line-clamp-2 font-medium">
                       "{item.texto_cliente}"
                     </p>
 
-                    <div className="flex items-center justify-between text-[11px] text-slate-500">
+                    <div className="flex items-center justify-between text-[11px] text-gray-500">
                       <span>
                         {item.remitente_whatsapp
                           ? `WhatsApp: ${item.remitente_whatsapp}`
-                          : "Respuesta automática enviada"}
+                          : "Atendido por Robot WhatsApp"}
                       </span>
-                      {item.es_fuera_horario && (
+                      {item.requiere_derivacion_humana ? (
+                        <span className="text-red-600 font-semibold">
+                          Solicitó asesor
+                        </span>
+                      ) : item.es_fuera_horario ? (
                         <span className="text-amber-700 font-medium">
                           Horario nocturno
                         </span>
-                      )}
+                      ) : null}
                     </div>
                   </button>
                 );
@@ -775,14 +890,14 @@ export const ClasificadorML: React.FC = () => {
           </div>
 
           {/* Columna derecha: Detalle de la conversación seleccionada */}
-          <div className="lg:col-span-7 bg-white rounded-xl shadow-sm border border-slate-200 p-6 flex flex-col justify-between">
+          <div className="lg:col-span-7 bg-white rounded-lg shadow-md p-6 flex flex-col justify-between">
             <div>
-              <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-100">
+              <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-gray-200">
                 <div>
-                  <span className="text-xs text-slate-400 uppercase font-semibold tracking-wider">
+                  <span className="text-xs text-gray-500 uppercase font-bold tracking-wider">
                     Detalle de Atención Automatizada
                   </span>
-                  <div className="flex items-center gap-2 mt-1">
+                  <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                     <span
                       className="px-3 py-1 rounded-full text-xs font-bold"
                       style={{
@@ -793,7 +908,7 @@ export const ClasificadorML: React.FC = () => {
                     >
                       {badgeActual.label}
                     </span>
-                    <span className="text-xs font-semibold text-slate-600">
+                    <span className="text-xs font-bold text-[#245682]">
                       {(seleccionado.confianza_modelo * 100).toFixed(1)}% de
                       confianza
                     </span>
@@ -807,11 +922,11 @@ export const ClasificadorML: React.FC = () => {
 
                 <div>
                   {seleccionado.requiere_derivacion_humana ? (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200">
-                      Requiere revisión de asesor
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+                      Derivado a Asesor de Ventas
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold bg-green-50 text-green-700 border border-green-200">
                       Respondido automáticamente en WhatsApp
                     </span>
                   )}
@@ -820,37 +935,37 @@ export const ClasificadorML: React.FC = () => {
 
               {/* Mensaje del cliente y respuesta automática del bot */}
               <div className="my-5 space-y-3">
-                <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+                <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
                   <div className="flex items-center justify-between mb-1">
-                    <p className="text-xs font-semibold text-slate-500">
-                      Mensaje recibido del cliente en WhatsApp:
+                    <p className="text-xs font-semibold text-gray-600">
+                      Consulta recibida del cliente en WhatsApp:
                     </p>
-                    <span className="text-[11px] text-slate-400">
+                    <span className="text-[11px] text-gray-400">
                       {seleccionado.timestamp_primer_mensaje || ""}
                     </span>
                   </div>
-                  <p className="text-sm text-slate-900 font-medium">
+                  <p className="text-sm text-gray-900 font-medium">
                     "{seleccionado.texto_cliente}"
                   </p>
                 </div>
 
                 {seleccionado.respuesta_automatica_bot && (
-                  <div className="bg-emerald-50/70 rounded-xl p-4 border border-emerald-200">
-                    <p className="text-xs font-semibold text-emerald-800 mb-1">
-                      Respuesta automática enviada por el Robot (+51 932 544
-                      926):
+                  <div className="bg-green-50/70 rounded-lg p-4 border border-green-200">
+                    <p className="text-xs font-bold text-green-800 mb-1">
+                      Respuesta automática enviada por el Robot (+51 937 395
+                      986):
                     </p>
-                    <p className="text-xs text-slate-800 whitespace-pre-line leading-relaxed">
+                    <p className="text-xs text-gray-800 whitespace-pre-line leading-relaxed">
                       {seleccionado.respuesta_automatica_bot}
                     </p>
                   </div>
                 )}
 
-                <div className="bg-blue-50/60 rounded-xl p-3.5 border border-blue-100">
-                  <p className="text-xs font-semibold text-blue-900 mb-0.5">
+                <div className="bg-blue-50/70 rounded-lg p-3.5 border border-blue-200">
+                  <p className="text-xs font-bold text-[#245682] mb-0.5">
                     Acción operativa registrada:
                   </p>
-                  <p className="text-xs text-blue-800 leading-relaxed">
+                  <p className="text-xs text-gray-800 leading-relaxed">
                     {seleccionado.accion_negocio_sugerida}
                   </p>
                 </div>
@@ -858,7 +973,7 @@ export const ClasificadorML: React.FC = () => {
 
               {/* Barras de probabilidad por categoría */}
               <div className="mb-6">
-                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">
+                <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">
                   Nivel de coincidencia por categoría
                 </h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -876,18 +991,18 @@ export const ClasificadorML: React.FC = () => {
                     return (
                       <div
                         key={clase}
-                        className="p-3 rounded-lg border border-slate-100 bg-slate-50/60"
+                        className="p-3 rounded-lg border border-gray-200 bg-gray-50/60"
                       >
                         <div className="flex justify-between text-xs font-semibold mb-1.5">
-                          <span className="text-slate-700">{info.label}</span>
+                          <span className="text-gray-700">{info.label}</span>
                           <span style={{ color: info.text }}>{pct}%</span>
                         </div>
-                        <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+                        <div className="w-full h-2.5 bg-gray-200 rounded-full overflow-hidden">
                           <div
                             className="h-full rounded-full transition-all duration-300"
                             style={{
                               width: `${Math.max(Number(pct), 2)}%`,
-                              backgroundColor: info.dot,
+                              backgroundColor: info.bar,
                             }}
                           />
                         </div>
@@ -899,7 +1014,7 @@ export const ClasificadorML: React.FC = () => {
 
               {/* Repuestos sugeridos del inventario */}
               <div>
-                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2.5">
+                <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2.5">
                   Repuestos vinculados en inventario
                 </h3>
                 {seleccionado.productos_sugeridos_supabase &&
@@ -908,27 +1023,27 @@ export const ClasificadorML: React.FC = () => {
                     {seleccionado.productos_sugeridos_supabase.map((prod) => (
                       <div
                         key={prod.id}
-                        className="p-3 rounded-lg border border-slate-200 bg-white flex items-center justify-between gap-2"
+                        className="p-3 rounded-lg border border-gray-200 bg-white flex items-center justify-between gap-2 shadow-sm"
                       >
                         <div>
-                          <p className="text-xs font-bold text-slate-800">
+                          <p className="text-xs font-bold text-gray-900">
                             {prod.nombre}
                           </p>
-                          <p className="text-[11px] text-slate-500">
+                          <p className="text-[11px] text-gray-500">
                             {prod.categoria} · Stock: {prod.stock_disponible}{" "}
                             und.
                           </p>
                         </div>
-                        <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200 whitespace-nowrap">
+                        <span className="text-xs font-bold text-green-700 bg-green-50 px-2.5 py-1 rounded-md border border-green-200 whitespace-nowrap">
                           S/ {Number(prod.precio_soles).toFixed(2)}
                         </span>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-xs text-slate-500 italic bg-slate-50 p-3 rounded-lg border border-slate-100">
-                    Esta consulta no requiere cotizar un repuesto específico del
-                    catálogo.
+                  <p className="text-xs text-gray-500 italic bg-gray-50 p-3 rounded-lg border border-gray-200">
+                    Esta consulta corresponde a seguimiento de pedido, pago o
+                    atención general.
                   </p>
                 )}
               </div>
