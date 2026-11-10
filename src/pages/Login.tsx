@@ -33,8 +33,11 @@ export function Login() {
       clearToken();
       saveToken(res.token);
       saveRole(res.role);
-      // redirigir a home
-      navigate("/");
+      if (res.role === "ADMINISTRADOR") {
+        navigate("/admin-profile");
+      } else {
+        navigate("/");
+      }
     } catch (err: unknown) {
       if (err instanceof Error) {
         setError(err.message);

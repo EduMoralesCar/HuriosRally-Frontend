@@ -9,6 +9,7 @@ import { useRoleProtection } from "../hooks/useRoleProtection";
 import ButtonShowPsd from "../components/ui/ButtonShowPwd";
 import { Input } from "../components/ui/Input";
 import { API_BASE_URL } from "../config/api";
+import { recordSaleAndNotify, recordStockOverride } from "../api/realtimeSync";
 
 type PaymentMethod = "card" | "yape";
 
@@ -298,6 +299,34 @@ export function Payment() {
             }
 
             const result = await res.json();
+
+            // Sincronizar venta y descuento de stock en tiempo real para el Dashboard Admin y Campana
+            try {
+                items.forEach((it) => {
+                    if (it.stock !== undefined) {
+                        const updatedStock = Math.max(0, it.stock - it.quantity);
+                        recordStockOverride(it.id, updatedStock);
+                    }
+                });
+                await recordSaleAndNotify({
+                    orderId: result.orderId || Date.now(),
+                    customerName:
+                        checkoutData.fullName ||
+                        checkoutData.companyName ||
+                        "Cliente Web",
+                    total: finalTotal,
+                    paymentMethod: paymentMethod === "card" ? "Tarjeta" : "Yape",
+                    items: items.map((it) => ({
+                        productId: it.id,
+                        productName: it.name,
+                        category: it.category || "Repuestos",
+                        quantity: it.quantity,
+                        unitPrice: it.price,
+                    })),
+                });
+            } catch {
+                // ignore realtime sync error so payment flow never fails
+            }
 
             // Generar PDF según tipo de documento
             const documentType = checkoutData.documentType;

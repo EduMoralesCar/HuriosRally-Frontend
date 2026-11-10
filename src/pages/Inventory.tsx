@@ -5,6 +5,7 @@ import ProductCard from "../components/product/ProductCard";
 import { useNavigate } from "react-router-dom";
 import { searchProducts, addStockToProduct, createProduct, uploadImage, deleteProduct, updateProduct, syncProductsFromApi, type Product as ProductType } from "../api/products";
 import { API_BASE_URL } from "../config/api";
+import { pushRealtimeNotification, recordStockOverride } from "../api/realtimeSync";
 
 
 type Product = ProductType & {
@@ -54,6 +55,15 @@ export function Inventory() {
     // Cargar productos al montar el componente o cuando cambia la query
     useEffect(() => {
         loadProducts();
+        const onRealtime = () => {
+            loadProducts();
+        };
+        window.addEventListener("hurios-realtime-updated", onRealtime);
+        window.addEventListener("storage", onRealtime);
+        return () => {
+            window.removeEventListener("hurios-realtime-updated", onRealtime);
+            window.removeEventListener("storage", onRealtime);
+        };
     }, []);
 
     // Buscar productos cuando cambia la query (con debounce)
@@ -112,13 +122,28 @@ export function Inventory() {
             setStockLoading(true);
             setError(null);
             const result = await addStockToProduct(showAddStockFor, qty);
-            
+            const targetProduct = products.find(p => p.id === showAddStockFor);
+            const prodName = targetProduct?.name || `Producto #${showAddStockFor}`;
+
             // Actualizar el producto en el estado local
             setProducts(prev => prev.map(p => 
                 p.id === showAddStockFor 
                     ? { ...p, stock: result.newStock } 
                     : p
             ));
+
+            recordStockOverride(showAddStockFor, result.newStock);
+            await pushRealtimeNotification({
+                type: "STOCK_UPDATE",
+                targetRole: "ALL",
+                titleAdmin: `Inventario actualizado: ${prodName}`,
+                messageAdmin: `Se agregaron +${qty} unidades en almacén. Stock actual: ${result.newStock} und.`,
+                titleClient: `¡Unidades disponibles en almacén!`,
+                messageClient: `Ya contamos con nuevo stock de ${prodName} (${result.newStock} unidades disponibles). Haz clic para verlo.`,
+                linkAdmin: "/inventario",
+                linkClient: `/products?productId=${showAddStockFor}`,
+                productId: showAddStockFor,
+            });
             
             setSuccessMessage(result.message);
             setShowAddStockFor(null);
@@ -186,6 +211,18 @@ export function Inventory() {
             
             // Agregar el producto al estado local
             setProducts(prev => [newProduct, ...prev]);
+
+            await pushRealtimeNotification({
+                type: "NEW_PRODUCT",
+                targetRole: "ALL",
+                titleAdmin: `Nuevo producto registrado: ${newProduct.name}`,
+                messageAdmin: `Catálogo actualizado (${newProduct.category || "General"}) — S/ ${Number(newProduct.price).toFixed(2)} (${newProduct.stock ?? 0} und.).`,
+                titleClient: `¡Nuevo repuesto disponible: ${newProduct.name}!`,
+                messageClient: `Acabamos de incorporar ${newProduct.name} a S/ ${Number(newProduct.price).toFixed(2)}. Haz clic para ver detalles.`,
+                linkAdmin: "/inventario",
+                linkClient: `/products?productId=${newProduct.id}`,
+                productId: newProduct.id,
+            });
             
             // Limpiar formulario
             setNewName("");
@@ -340,6 +377,18 @@ export function Inventory() {
             setProducts(prev => prev.map(p => 
                 p.id === showEditModal ? updatedProduct : p
             ));
+
+            await pushRealtimeNotification({
+                type: "PROMOTION",
+                targetRole: "ALL",
+                titleAdmin: `Producto actualizado: ${updatedProduct.name}`,
+                messageAdmin: `Precio/datos actualizados en catálogo (S/ ${Number(updatedProduct.price).toFixed(2)}).`,
+                titleClient: `¡Actualización y oferta en ${updatedProduct.name}!`,
+                messageClient: `Consulta ${updatedProduct.name} disponible ahora a S/ ${Number(updatedProduct.price).toFixed(2)}. Haz clic para verlo.`,
+                linkAdmin: "/inventario",
+                linkClient: `/products?productId=${updatedProduct.id}`,
+                productId: updatedProduct.id,
+            });
             
             setSuccessMessage("Producto actualizado correctamente");
             setShowEditModal(null);

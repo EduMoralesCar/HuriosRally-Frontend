@@ -1,14 +1,30 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { getAllProducts } from "../api/products";
+import { getProductRatingStats, syncRealtimeFromBackend } from "../api/realtimeSync";
 import ShopCard, { type Product } from "../components/product/ShopCard";
 import Navbar from "../components/layout/Navbar";
 import Footer from "../components/layout/Footer";
 
-const CATEGORIES = ["Motor","Neumáticos",
-  "Carrocería","Filtros",
-  "Suspensión","Frenos","Eléctrico","Accesorios","Transmisión","Lubricantes"];
+const CATEGORIES = [
+  "Motor",
+  "Neumáticos",
+  "Carrocería",
+  "Filtros",
+  "Suspensión",
+  "Frenos",
+  "Eléctrico",
+  "Accesorios",
+  "Transmisión",
+  "Lubricantes",
+];
+
+type SortOption = "name" | "price-asc" | "price-desc" | "rating-desc" | "reviews-desc";
 
 export default function Products() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const productIdParam = searchParams.get("productId");
+
   const [products, setProducts] = useState<Product[]>([]);
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -16,21 +32,39 @@ export default function Products() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("");
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 10000]);
-  const [sortBy, setSortBy] = useState<"name" | "price-asc" | "price-desc">("name");
+  const [sortBy, setSortBy] = useState<SortOption>("name");
+  const [onlyTopRated, setOnlyTopRated] = useState<boolean>(false);
+  const [reviewTick, setReviewTick] = useState<number>(0);
+
+  const loadProducts = useCallback(async (silent = false) => {
+    try {
+      if (!silent) setLoading(true);
+      const data = await getAllProducts();
+      setProducts(data);
+      setError(null);
+    } catch (err: any) {
+      if (!silent) setError(err.message || "Error al cargar productos");
+    } finally {
+      if (!silent) setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    (async () => {
-      try {
-        const data = await getAllProducts();
-        setProducts(data);
-        setFilteredProducts(data);
-      } catch (err: any) {
-        setError(err.message || "Error al cargar productos");
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
+    loadProducts(false);
+    syncRealtimeFromBackend();
+
+    const handleRealtimeUpdate = () => {
+      setReviewTick((t) => t + 1);
+      loadProducts(true);
+    };
+
+    window.addEventListener("hurios-realtime-updated", handleRealtimeUpdate);
+    window.addEventListener("storage", handleRealtimeUpdate);
+    return () => {
+      window.removeEventListener("hurios-realtime-updated", handleRealtimeUpdate);
+      window.removeEventListener("storage", handleRealtimeUpdate);
+    };
+  }, [loadProducts]);
 
   useEffect(() => {
     let filtered = [...products];
@@ -49,7 +83,15 @@ export default function Products() {
       );
     }
 
-    filtered = filtered.filter((p) => p.price >= priceRange[0] && p.price <= priceRange[1]);
+    filtered = filtered.filter(
+      (p) => p.price >= priceRange[0] && p.price <= priceRange[1]
+    );
+
+    if (onlyTopRated) {
+      filtered = filtered.filter(
+        (p) => getProductRatingStats(p.id, p.name).average >= 4.5
+      );
+    }
 
     if (sortBy === "name") {
       filtered.sort((a, b) => a.name.localeCompare(b.name));
@@ -57,16 +99,50 @@ export default function Products() {
       filtered.sort((a, b) => a.price - b.price);
     } else if (sortBy === "price-desc") {
       filtered.sort((a, b) => b.price - a.price);
+    } else if (sortBy === "rating-desc") {
+      filtered.sort((a, b) => {
+        const rA = getProductRatingStats(a.id, a.name);
+        const rB = getProductRatingStats(b.id, b.name);
+        if (rB.average !== rA.average) return rB.average - rA.average;
+        return rB.count - rA.count;
+      });
+    } else if (sortBy === "reviews-desc") {
+      filtered.sort((a, b) => {
+        const rA = getProductRatingStats(a.id, a.name);
+        const rB = getProductRatingStats(b.id, b.name);
+        return rB.count - rA.count;
+      });
     }
 
     setFilteredProducts(filtered);
-  }, [products, searchQuery, selectedCategory, priceRange, sortBy]);
+  }, [products, searchQuery, selectedCategory, priceRange, sortBy, onlyTopRated, reviewTick]);
+
+  // Si viene productId desde una notificación, hacer scroll suave al producto
+  useEffect(() => {
+    if (!productIdParam || products.length === 0) return;
+    const el = document.getElementById(`product-card-${productIdParam}`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [productIdParam, products.length]);
 
   const handleResetFilters = () => {
     setSearchQuery("");
     setSelectedCategory("");
     setPriceRange([0, 10000]);
     setSortBy("name");
+    setOnlyTopRated(false);
+    if (productIdParam) {
+      searchParams.delete("productId");
+      setSearchParams(searchParams, { replace: true });
+    }
+  };
+
+  const clearFocusedProduct = () => {
+    if (productIdParam) {
+      searchParams.delete("productId");
+      setSearchParams(searchParams, { replace: true });
+    }
   };
 
   return (
@@ -74,8 +150,44 @@ export default function Products() {
       <Navbar />
 
       <main className="flex-grow">
-        <div className="max-w-7xl mx-auto px-4 py-10">
-          <h1 className="text-2xl font-bold mb-6">Productos</h1>
+        <div className="max-w-7xl mx-auto px-4 py-8 sm:py-10">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">Catálogo de Productos</h1>
+              <p className="text-sm text-gray-600">
+                Explora repuestos originales con stock actualizado en tiempo real y valoraciones de clientes.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setSortBy(sortBy === "rating-desc" ? "name" : "rating-desc");
+                }}
+                className={`px-3.5 py-2 rounded-md text-xs font-semibold border transition-colors flex items-center gap-1.5 cursor-pointer ${
+                  sortBy === "rating-desc"
+                    ? "bg-[var(--Primary_5)] text-white border-[var(--Primary_5)]"
+                    : "bg-white text-[var(--Primary_5)] border-gray-300 hover:bg-[#ebf3fa]"
+                }`}
+              >
+                <svg width={14} height={14} viewBox="0 0 24 24" fill="#f59e0b" stroke="#f59e0b" strokeWidth={2}>
+                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                </svg>
+                Mejor valorados
+              </button>
+              <button
+                type="button"
+                onClick={() => setOnlyTopRated((prev) => !prev)}
+                className={`px-3.5 py-2 rounded-md text-xs font-semibold border transition-colors cursor-pointer ${
+                  onlyTopRated
+                    ? "bg-amber-500 text-white border-amber-500"
+                    : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+                }`}
+              >
+                Solo 4.5★ o más
+              </button>
+            </div>
+          </div>
 
           {loading ? (
             <div className="text-center py-8">Cargando productos...</div>
@@ -91,7 +203,7 @@ export default function Products() {
                       type="text"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="Buscar por nombre o descripcion..."
+                      placeholder="Buscar por nombre o descripción..."
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--Primary_5)]"
                     />
                   </div>
@@ -116,10 +228,12 @@ export default function Products() {
                     <label className="block text-sm font-medium text-gray-700 mb-2">Ordenar por</label>
                     <select
                       value={sortBy}
-                      onChange={(e) => setSortBy(e.target.value as "name" | "price-asc" | "price-desc")}
+                      onChange={(e) => setSortBy(e.target.value as SortOption)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[var(--Primary_5)]"
                     >
-                      <option value="name">Nombre</option>
+                      <option value="name">Nombre (A-Z)</option>
+                      <option value="rating-desc">Mejor valorados (★)</option>
+                      <option value="reviews-desc">Más comentados</option>
                       <option value="price-asc">Precio: Menor a Mayor</option>
                       <option value="price-desc">Precio: Mayor a Menor</option>
                     </select>
@@ -141,7 +255,7 @@ export default function Products() {
                   </div>
                 </div>
 
-                <div className="mt-4 flex justify-between items-center">
+                <div className="mt-4 flex flex-wrap justify-between items-center gap-2">
                   <p className="text-sm text-gray-600">
                     Mostrando {filteredProducts.length} de {products.length} productos
                   </p>
@@ -161,7 +275,12 @@ export default function Products() {
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
                   {filteredProducts.map((p) => (
-                    <ShopCard key={p.id} product={p} />
+                    <ShopCard
+                      key={p.id}
+                      product={p}
+                      autoOpen={productIdParam !== null && Number(productIdParam) === p.id}
+                      onCloseModal={clearFocusedProduct}
+                    />
                   ))}
                 </div>
               )}
