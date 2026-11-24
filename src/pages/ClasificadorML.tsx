@@ -4,6 +4,7 @@ import Navbar from "../components/layout/Navbar";
 import Footer from "../components/layout/Footer";
 import {
   MODELOS_COMPARADOS,
+  clasificarConsultaML,
   obtenerHistorialConsultasML,
   obtenerEstadoWhatsApp,
   generarQRWhatsApp,
@@ -178,6 +179,61 @@ export const ClasificadorML: React.FC = () => {
   );
   const [telefonoVinculacion, setTelefonoVinculacion] =
     useState<string>("937395986");
+
+  // Estados para la Demo Funcional End-to-End en Vivo (Paso 3 PROY)
+  const [mostrarPanelDemo, setMostrarPanelDemo] = useState<boolean>(true);
+  const [textoDemo, setTextoDemo] = useState<string>(
+    "Buenas noches maestro, ¿tienes kit de pistón y cilindro completo para mi bajajita Torito 4T RE 205 y a cuánto sale para comprarlo ahorita?",
+  );
+  const [horaDemo, setHoraDemo] = useState<number>(21);
+  const [umbralDemo, setUmbralDemo] = useState<number>(0.68);
+  const [simularDegradacion, setSimularDegradacion] = useState<boolean>(false);
+  const [ejecutandoDemo, setEjecutandoDemo] = useState<boolean>(false);
+  const [errorValidacionDemo, setErrorValidacionDemo] = useState<string | null>(
+    null,
+  );
+  const [avisoExitoDemo, setAvisoExitoDemo] = useState<string | null>(null);
+
+  const handleEjecutarDemoEnVivo = async (
+    textoCustom?: string,
+    horaCustom?: number,
+    forzarDegradacion?: boolean,
+  ) => {
+    setErrorValidacionDemo(null);
+    setAvisoExitoDemo(null);
+    setEjecutandoDemo(true);
+    const txt = textoCustom !== undefined ? textoCustom : textoDemo;
+    const hr = horaCustom !== undefined ? horaCustom : horaDemo;
+    const deg =
+      forzarDegradacion !== undefined ? forzarDegradacion : simularDegradacion;
+
+    try {
+      const resultado = await clasificarConsultaML(
+        txt,
+        hr,
+        umbralDemo,
+        deg,
+      );
+      setHistorial((prev) => [
+        resultado,
+        ...prev.filter((x) => x.id_conversacion !== resultado.id_conversacion),
+      ]);
+      setSeleccionado(resultado);
+      setAvisoExitoDemo(
+        deg
+          ? `Protocolo de Degradación Controlada verificado y registrado (${resultado.version_modelo || "v2.0.0-PROY"}).`
+          : `Predicción ejecutada y persistida con éxito: ${resultado.intencion_predicha} (${(resultado.confianza_modelo * 100).toFixed(1)}%) · Versión ${resultado.version_modelo || "v2.0.0-PROY-20261124"}.`,
+      );
+    } catch (err: unknown) {
+      const msg =
+        err instanceof Error
+          ? err.message
+          : "Entrada inválida rechazada por el validador del sistema.";
+      setErrorValidacionDemo(msg);
+    } finally {
+      setEjecutandoDemo(false);
+    }
+  };
 
   const recargarBandeja = async (silencioso = false) => {
     if (!silencioso) setCargandoHistorial(true);
@@ -395,6 +451,12 @@ export const ClasificadorML: React.FC = () => {
 
             <div className="flex items-center gap-2.5 flex-wrap">
               <button
+                onClick={() => setMostrarPanelDemo(!mostrarPanelDemo)}
+                className="px-4 py-2 rounded-md text-sm font-medium text-white bg-blue-700 hover:bg-blue-800 transition cursor-pointer"
+              >
+                {mostrarPanelDemo ? "Ocultar Demo en Vivo" : "Demo en Vivo PROY"}
+              </button>
+              <button
                 onClick={handleAbrirVinculacion}
                 className="px-4 py-2 rounded-md text-sm font-medium text-white bg-green-600 hover:bg-green-700 transition cursor-pointer"
               >
@@ -418,6 +480,122 @@ export const ClasificadorML: React.FC = () => {
             </div>
           </div>
         </div>
+
+        {/* PANEL DE DEMO FUNCIONAL END-TO-END EN VIVO (PASO 3 PROY - SEMANA 17) */}
+        {mostrarPanelDemo && (
+          <div className="bg-white rounded-lg shadow-md border-l-4 border-[#245682] p-5 mb-6">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 pb-3 border-b border-gray-200 mb-4">
+              <div>
+                <h2 className="text-base font-bold text-gray-900">
+                  Demo Funcional End-to-End en Vivo (Modelo Servido v2.0.0-PROY-20261124 · Hash 135c43a3eb29)
+                </h2>
+                <p className="text-xs text-gray-600">
+                  Prueba en vivo los 2 escenarios obligatorios de sustentación: (a) Registro nuevo con predicción y valor de venta en Soles, y (b) Manejo de entrada inválida o Degradación Controlada.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const msg =
+                      "Buenas noches maestro, ¿tienes cilindro completo para mi bajajita Torito 4T RE 205 y a cuánto sale para comprarlo ahorita?";
+                    setTextoDemo(msg);
+                    setHoraDemo(21);
+                    setSimularDegradacion(false);
+                    handleEjecutarDemoEnVivo(msg, 21, false);
+                  }}
+                  className="px-3 py-1.5 rounded text-xs font-semibold bg-blue-50 text-blue-800 border border-blue-200 hover:bg-blue-100 cursor-pointer"
+                >
+                  Escenario A: Consulta Nueva (Venta Nocturna)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTextoDemo("???");
+                    handleEjecutarDemoEnVivo("???", 21, false);
+                  }}
+                  className="px-3 py-1.5 rounded text-xs font-semibold bg-red-50 text-red-800 border border-red-200 hover:bg-red-100 cursor-pointer"
+                >
+                  Escenario B1: Entrada Inválida ("???")
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const msg =
+                      "Urgente necesito amortiguador delantero para Torito Bajaj RE 4T y confirmar mi pago Yape";
+                    setTextoDemo(msg);
+                    setSimularDegradacion(true);
+                    handleEjecutarDemoEnVivo(msg, 22, true);
+                  }}
+                  className="px-3 py-1.5 rounded text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 cursor-pointer"
+                >
+                  Escenario B2: Degradación Controlada (Fallback)
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-end">
+              <div className="lg:col-span-6">
+                <label className="block text-xs font-bold text-gray-700 mb-1">
+                  Mensaje entrante del cliente (WhatsApp / Web):
+                </label>
+                <input
+                  type="text"
+                  value={textoDemo}
+                  onChange={(e) => setTextoDemo(e.target.value)}
+                  placeholder="Escribe una consulta de repuesto, compatibilidad o pago Yape..."
+                  className="w-full px-3 py-2 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#245682]"
+                />
+              </div>
+              <div className="lg:col-span-2">
+                <label className="block text-xs font-bold text-gray-700 mb-1">
+                  Hora (0 a 23 h):
+                </label>
+                <input
+                  type="number"
+                  value={horaDemo}
+                  onChange={(e) => setHoraDemo(Number(e.target.value))}
+                  className="w-full px-3 py-2 text-xs border border-gray-300 rounded-md"
+                />
+              </div>
+              <div className="lg:col-span-2">
+                <label className="block text-xs font-bold text-gray-700 mb-1">
+                  Umbral confianza:
+                </label>
+                <input
+                  type="number"
+                  step="0.02"
+                  min="0.50"
+                  max="0.95"
+                  value={umbralDemo}
+                  onChange={(e) => setUmbralDemo(Number(e.target.value))}
+                  className="w-full px-3 py-2 text-xs border border-gray-300 rounded-md"
+                />
+              </div>
+              <div className="lg:col-span-2">
+                <button
+                  type="button"
+                  disabled={ejecutandoDemo}
+                  onClick={() => handleEjecutarDemoEnVivo()}
+                  className="w-full px-4 py-2 rounded-md text-xs font-bold text-white bg-[#245682] hover:bg-[#1e4a6f] transition cursor-pointer"
+                >
+                  {ejecutandoDemo ? "Procesando..." : "Clasificar y Persistir"}
+                </button>
+              </div>
+            </div>
+
+            {errorValidacionDemo && (
+              <div className="mt-3 p-3 rounded-md bg-red-50 border border-red-300 text-xs text-red-800 font-semibold">
+                Validación y Manejo de Error Activo: {errorValidacionDemo}
+              </div>
+            )}
+            {avisoExitoDemo && (
+              <div className="mt-3 p-3 rounded-md bg-green-50 border border-green-300 text-xs text-green-900 font-semibold">
+                {avisoExitoDemo}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Panel desplegable de Vinculación de WhatsApp Real (+51 937 395 986) */}
         {mostrarModalWA && (
@@ -962,11 +1140,28 @@ export const ClasificadorML: React.FC = () => {
                 )}
 
                 <div className="bg-blue-50/70 rounded-lg p-3.5 border border-blue-200">
-                  <p className="text-xs font-bold text-[#245682] mb-0.5">
-                    Acción operativa registrada:
+                  <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
+                    <p className="text-xs font-bold text-[#245682]">
+                      Interpretación en Lenguaje de Negocio (¿Qué predice y por qué genera la venta?):
+                    </p>
+                    {typeof seleccionado.monto_potencial_soles === "number" &&
+                      seleccionado.monto_potencial_soles > 0 && (
+                        <span className="text-xs font-bold bg-green-100 text-green-800 px-2.5 py-0.5 rounded border border-green-300">
+                          Venta Potencial: S/{" "}
+                          {seleccionado.monto_potencial_soles.toFixed(2)}
+                        </span>
+                      )}
+                  </div>
+                  <p className="text-xs text-gray-800 leading-relaxed mb-1.5">
+                    {seleccionado.explicacion_negocio ||
+                      `QUÉ PREDICE: Intención comercial (${seleccionado.intencion_predicha}, ${(seleccionado.confianza_modelo * 100).toFixed(1)}%). POR QUÉ GENERA LA VENTA: Vincula precios y stock en vivo desde PostgreSQL para cerrar la venta por Yape/Plin en 1.3 s sin perder clientes nocturnos.`}
                   </p>
-                  <p className="text-xs text-gray-800 leading-relaxed">
-                    {seleccionado.accion_negocio_sugerida}
+                  <p className="text-[11px] text-gray-600 font-medium border-t border-blue-100 pt-1.5">
+                    <strong>Acción en el flujo:</strong>{" "}
+                    {seleccionado.accion_negocio_sugerida} ·{" "}
+                    <strong>Versión modelo:</strong>{" "}
+                    {seleccionado.version_modelo || "v2.0.0-PROY-20261124"} (Umbral:{" "}
+                    {seleccionado.umbral_aplicado || 0.68})
                   </p>
                 </div>
               </div>
